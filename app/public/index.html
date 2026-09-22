@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#111827">
+    <title>Wake</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <style>
+        :root { --ink: #172033; --muted: #68738a; --line: #e6eaf0; --orange: #ff7a45; }
+        * { box-sizing: border-box; }
+        body { margin: 0; color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fb; }
+        .topbar { min-height: 72px; padding: 0 max(20px, calc((100vw - 1180px) / 2)); display: flex; align-items: center; justify-content: space-between; color: white; background: radial-gradient(circle at 15% 20%, #34456c 0, #172033 45%, #101625 100%); }
+        .brand { display: flex; align-items: center; gap: 11px; font-size: 22px; font-weight: 750; letter-spacing: -.5px; }
+        .brand-mark { display:grid; place-items:center; height: 35px; width: 35px; border-radius: 12px; background: var(--orange); box-shadow: 0 5px 18px #ff7a4560; }
+        .page { max-width: 1180px; margin: 0 auto; padding: 38px 20px 54px; }
+        .intro { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 25px; }
+        h1 { margin: 0; font-size: clamp(28px, 4vw, 38px); letter-spacing: -1.25px; }
+        .intro p { color: var(--muted); margin: 8px 0 0; }
+        .instance-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 17px; }
+        .instance-card { border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: 0 7px 20px #25304a0b; }
+        .instance-card .el-card__body { padding: 20px; }
+        .card-head, .card-actions, .section-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .name { font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
+        .address-section { margin-top: 18px; }
+        .section-title { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+        .address-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+        .address-list .el-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .card-actions { margin-top: 21px; }
+        .empty { padding: 56px 20px; text-align: center; border: 1px dashed #cfd6e2; border-radius: 18px; background: #fff; color: var(--muted); }
+        .empty-icon { font-size: 36px; margin-bottom: 8px; }
+        .dialog-form .el-form-item { margin-bottom: 20px; }
+        .address-editor { padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #fafbfc; }
+        .address-row { display:flex; gap:8px; margin-bottom: 8px; }
+        .address-row:last-child { margin-bottom: 0; }
+        .address-row .el-input { flex: 1; }
+        .dialog-note { font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: -10px; }
+        .refresh-button { min-width: 110px; }
+        .refresh-controls { display: flex; align-items: center; gap: 12px; }
+        .auto-refresh-toggle { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .refresh-dial { display: inline-block; width: 14px; height: 14px; margin-right: 3px; border: 2px solid #b8c0d0; border-top-color: #3e79eb; border-radius: 50%; animation: refresh-spin 10s linear infinite; vertical-align: -2px; }
+        .refresh-button.is-loading .refresh-dial { animation-duration: .75s; }
+        .refresh-button.is-paused .refresh-dial { animation-play-state: paused; }
+        .refresh-count { margin-left: 3px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+        @keyframes refresh-spin { to { transform: rotate(360deg); } }
+        @media (max-width: 580px) { .topbar { min-height:64px; } .page { padding-top: 26px; } .intro { align-items: stretch; flex-direction: column; } .refresh-controls, .intro .el-button { width: 100%; } .refresh-controls .refresh-button { flex: 1; } .instance-grid { grid-template-columns: 1fr; } .card-actions .el-button { flex: 1; } .el-dialog { width: calc(100% - 24px) !important; margin-top: 6vh !important; } }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="topbar">
+            <div class="brand"><span class="brand-mark">☀</span> Wake</div>
+            <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
+        </header>
+        <main class="page">
+            <section class="intro">
+                <div><h1>Your machines</h1><p>Wake devices on your network, wherever you are.</p></div>
+                <div class="refresh-controls"><label class="auto-refresh-toggle"><el-switch v-model="autoRefresh" size="small" @change="setAutoRefresh"></el-switch> Auto-refresh</label><el-button class="refresh-button" :class="{ 'is-loading': loading }" plain @click="refreshNow"><span v-if="autoRefresh" class="refresh-dial"></span> Refresh <span v-if="autoRefresh" class="refresh-count">{{ refreshCountdown }}s</span></el-button></div>
+            </section>
+            <div v-loading="loading" class="instance-grid">
+                <article v-for="instance in instances" :key="instance.id"><el-card shadow="never" class="instance-card">
+                    <div class="card-head"><span class="name">{{ instance.name }}</span><el-tag :type="instance.active ? 'success' : 'info'" effect="light" round>{{ instance.active ? 'Enabled' : 'Paused' }}</el-tag></div>
+                    <div class="address-section"><div class="section-title"><span>Hosts</span><span>{{ instance.hosts.length }}</span></div><div class="address-list"><el-tag v-for="host in instance.hosts" :key="host.address" effect="plain">{{ host.address }}</el-tag><span v-if="!instance.hosts.length" class="section-title">None configured</span></div></div>
+                    <div class="address-section"><div class="section-title"><span>MAC addresses</span><span>{{ instance.macs.length }}</span></div><div class="address-list"><el-tag v-for="mac in instance.macs" :key="mac.address" type="warning" effect="plain">{{ mac.address }}</el-tag><span v-if="!instance.macs.length" class="section-title">None configured</span></div></div>
+                    <div class="card-actions"><el-button type="primary" :disabled="!instance.active || !instance.macs.length" :loading="wakingId === instance.id" @click="wakeInstance(instance)">Wake</el-button><div><el-button text @click="openEdit(instance)">Edit</el-button><el-button text type="danger" @click="deleteInstance(instance)">Delete</el-button></div></div>
+                </el-card></article>
+            </div>
+            <section v-if="!loading && !instances.length" class="empty"><div class="empty-icon">☀</div><strong>No machines yet</strong><p>Add an instance to begin waking devices.</p><el-button type="primary" @click="openCreate">Add your first instance</el-button></section>
+        </main>
+        <el-dialog v-model="dialogOpen" :title="editingId ? 'Edit instance' : 'Add instance'" width="560px" :close-on-click-modal="false">
+            <el-form class="dialog-form" label-position="top" @submit.prevent="saveInstance"><el-form-item label="Name" required><el-input v-model="form.name" placeholder="e.g. Office workstation" autofocus></el-input></el-form-item><el-form-item><el-checkbox v-model="form.active">Enable wake requests</el-checkbox></el-form-item><el-form-item label="Hosts"><div class="address-editor"><div v-for="(host, index) in form.hosts" :key="index" class="address-row"><el-input v-model="host.address" placeholder="192.168.1.10 or hostname"></el-input><el-button circle text type="danger" aria-label="Remove host" @click="removeAddress('hosts', index)">×</el-button></div><el-button text type="primary" @click="addAddress('hosts')">+ Add host</el-button></div></el-form-item><el-form-item label="MAC addresses"><div class="address-editor"><div v-for="(mac, index) in form.macs" :key="index" class="address-row"><el-input v-model="mac.address" placeholder="00:11:22:33:44:55"></el-input><el-button circle text type="danger" aria-label="Remove MAC address" @click="removeAddress('macs', index)">×</el-button></div><el-button text type="primary" @click="addAddress('macs')">+ Add MAC address</el-button></div></el-form-item><p class="dialog-note">At least one MAC address is required to send a Wake-on-LAN request. Hosts are used to show whether a machine is online.</p></el-form>
+            <template #footer><el-button @click="dialogOpen = false">Cancel</el-button><el-button type="primary" :loading="saving" @click="saveInstance">{{ editingId ? 'Save changes' : 'Add instance' }}</el-button></template>
+        </el-dialog>
+    </div>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="index.js"></script>
+</body>
+</html>

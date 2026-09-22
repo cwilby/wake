@@ -1,0 +1,19 @@
+{
+  "name": "wake",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.2",
+    "express": "^5.2.1",
+    "morgan": "^1.12.1",
+    "mysql2": "^3.24.4",
+    "wake_on_lan": "^1.0.0"
+  }
+}

@@ -1,0 +1,20 @@
+networks:
+  wake:
+  web:
+    external: true
+
+services:
+  wake:
+    build: .
+    restart: unless-stopped
+    cap_add:
+      - NET_RAW
+    cap_drop:
+      - ALL
+    network_mode: host
+    environment:
+      WAKE_HTTP_PORT: 8091
+      WAKE_MYSQL_HOST: 192.168.86.2
+      WAKE_MYSQL_USERNAME: root
+      WAKE_MYSQL_PASSWORD: secret
+      WAKE_MYSQL_DATABASE: wake
