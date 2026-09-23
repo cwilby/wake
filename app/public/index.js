@@ -6,14 +6,24 @@ createApp({
         const loading = ref(false);
         const saving = ref(false);
         const wakingId = ref(null);
+        const shuttingDownId = ref(null);
         const refreshCountdown = ref(10);
         const autoRefresh = ref(true);
         const dialogOpen = ref(false);
         const editingId = ref(null);
         const form = ref(emptyForm());
+        const shutdownDialogOpen = ref(false);
+        const shutdownInstance = ref(null);
+        const strategySaving = ref(false);
+        const enrollmentToken = ref('');
+        const strategyForm = ref(emptyStrategyForm());
 
         function emptyForm() {
             return { name: '', active: true, hosts: [], macs: [] };
+        }
+
+        function emptyStrategyForm() {
+            return { type: 'ssh', platform: 'linux', host: '', private_key: '', shutdown_command: '' };
         }
 
         async function request(url, options = {}) {
@@ -127,6 +137,73 @@ createApp({
             }
         }
 
+        function openShutdownSetup(instance) {
+            shutdownInstance.value = instance;
+            strategyForm.value = emptyStrategyForm();
+            enrollmentToken.value = '';
+            shutdownDialogOpen.value = true;
+        }
+
+        async function addShutdownStrategy() {
+            const data = { ...strategyForm.value };
+            if (data.type === 'ssh' && (!data.host.trim() || !data.private_key.trim())) {
+                return ElementPlus.ElMessage.warning('An SSH host and private key are required.');
+            }
+            strategySaving.value = true;
+            try {
+                const strategy = await request(`/instances/${shutdownInstance.value.id}/shutdown-strategies`, {
+                    method: 'POST', body: JSON.stringify(data)
+                });
+                enrollmentToken.value = strategy.enrollment_token || '';
+                await loadInstances();
+                shutdownInstance.value = instances.value.find(instance => instance.id === shutdownInstance.value.id);
+                strategyForm.value = emptyStrategyForm();
+                ElementPlus.ElMessage.success('Shutdown strategy added.');
+            } catch (error) {
+                ElementPlus.ElMessage.error(error.message);
+            } finally {
+                strategySaving.value = false;
+            }
+        }
+
+        async function removeShutdownStrategy(strategy) {
+            try {
+                await request(`/instances/${shutdownInstance.value.id}/shutdown-strategies/${strategy.id}`, { method: 'DELETE' });
+                shutdownInstance.value.shutdown_strategies = shutdownInstance.value.shutdown_strategies.filter(item => item.id !== strategy.id);
+                ElementPlus.ElMessage.success('Shutdown strategy removed.');
+            } catch (error) {
+                ElementPlus.ElMessage.error(error.message);
+            }
+        }
+
+        async function shutdownInstanceNow(instance) {
+            try {
+                await ElementPlus.ElMessageBox.confirm(`Request shutdown for “${instance.name}”?`, 'Shutdown instance', {
+                    confirmButtonText: 'Shutdown', cancelButtonText: 'Cancel', type: 'warning'
+                });
+                shuttingDownId.value = instance.id;
+                const result = await request(`/instances/${instance.id}/shutdown`, { method: 'POST' });
+                const queued = result.results.some(item => item.status === 'queued');
+                ElementPlus.ElMessage.success(queued ? 'Shutdown request queued for the remote agent.' : 'Shutdown command sent.');
+            } catch (error) {
+                if (error !== 'cancel' && error !== 'close') ElementPlus.ElMessage.error(error.message);
+            } finally {
+                shuttingDownId.value = null;
+            }
+        }
+
+        function stateLabel(state) {
+            return { awake: 'Host is up', asleep: 'Host is down', 'no-host': 'No host configured' }[state];
+        }
+
+        function statusDetail(state) {
+            return {
+                awake: 'Awake',
+                asleep: 'Asleep',
+                'no-host': 'Add a host address to check availability.'
+            }[state];
+        }
+
         loadInstances();
         const refreshTimer = window.setInterval(() => {
             if (!autoRefresh.value) return;
@@ -138,6 +215,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { instances, loading, saving, wakingId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance };
+        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, shutdownDialogOpen, shutdownInstance, strategySaving, enrollmentToken, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, openShutdownSetup, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

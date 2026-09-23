@@ -1,6 +1,6 @@
 FROM node:24-alpine
 
-RUN apk add --no-cache iputils
+RUN apk add --no-cache iputils openssh-client
 
 WORKDIR /app
 
