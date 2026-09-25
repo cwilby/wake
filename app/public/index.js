@@ -16,6 +16,7 @@ createApp({
         const shutdownInstance = computed(() => instances.value.find(instance => instance.id === editingId.value));
         const strategySaving = ref(false);
         const enrollmentToken = ref('');
+        const agentEndpoint = `${window.location.origin}/agent/events`;
         const strategyForm = ref(emptyStrategyForm());
 
         function emptyForm() {
@@ -223,6 +224,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');
