@@ -16,3 +16,9 @@ export RSYNC_RSH="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o BatchMode=yes -o 
 # Linux rsync spells compression -z (lowercase).
 rsync -avz --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclude='.env' --exclude='.env.*' \
     ./ "${DEPLOY_USER}@192.168.86.2:docker/wake/"
+
+# Rebuild from the synced source and recreate the Compose services with the new image.
+ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+    -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+    "${DEPLOY_USER}@192.168.86.2" \
+    'cd docker/wake && docker compose up -d --build --force-recreate'

@@ -53,7 +53,7 @@ Wake does not run background availability checks or scheduled pings. Each `GET /
 
 ## Gitea Actions deployment and Windows download
 
-`.gitea/workflows/deploy.yml` runs on pushes to `master` and manual dispatch. It tests the application, builds a portable Windows x64 agent ZIP, uploads it to the run's **Artifacts**, then syncs the application to `192.168.86.2:docker/wake/` over SSH. This is a file deployment like the requested rsync command; it does not restart Docker. Linux rsync uses `-avz` for archive, verbose, and compression.
+`.gitea/workflows/deploy.yml` runs on pushes to `master` and manual dispatch. It tests the application, builds a portable Windows x64 agent ZIP, uploads it to the run's **Artifacts**, then syncs the application to `192.168.86.2:docker/wake/` over SSH. After syncing, it runs `docker compose up -d --build --force-recreate` in the remote `~/docker/wake` directory to rebuild the image and restart the Compose services. A sync or Compose failure fails the deployment job. Linux rsync uses `-avz` for archive, verbose, and compression.
 
 Enable repository Actions and provide a Linux Docker runner labelled `ubuntu-latest` that can reach `192.168.86.2:22`, your Gitea server, GitHub Actions repositories, npm, and nodejs.org. The workflow uses a Node 24 Debian container and installs its packaging/deployment tools inside that container.
 
@@ -65,7 +65,7 @@ Set these repository **Actions secrets**:
 | `DEPLOY_SSH_KEY` | Unencrypted deployment private key; authorize its public key on the destination |
 | `DEPLOY_KNOWN_HOSTS` | Verified SSH known-hosts entry for `192.168.86.2` |
 
-The remote account needs write access to `~/docker/wake`, its parent `~/docker` must exist, and rsync must be installed on the destination. The sync preserves remote-only files and excludes `.git`, `node_modules`, build downloads, and `.env` files. Configure the production environment on the destination. SSH host-key checking stays enabled.
+The remote account needs write access to `~/docker/wake`, its parent `~/docker` must exist, and rsync plus Docker Compose must be installed on the destination. The SSH account must be able to run Docker without an interactive sudo prompt. The sync preserves remote-only files and excludes `.git`, `node_modules`, build downloads, and `.env` files. Configure the production environment on the destination. SSH host-key checking stays enabled.
 
 After a successful build, open the workflow run and download **wake-agent-windows-x64** from **Artifacts**. Extract the artifact and its included `wake-agent-windows-x64.zip`. The package includes Node.js, the persistent agent, and installation/uninstallation scripts. No credentials are included in the download. Node's Windows runtime is verified against its official SHA-256 checksum during packaging.
 

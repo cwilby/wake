@@ -43,7 +43,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends rsync openssh-client
-      - name: Sync application
+      - name: Sync application and restart containers
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
