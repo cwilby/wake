@@ -38,14 +38,22 @@ createApp({
             return response.status === 204 ? null : response.json();
         }
 
-        async function loadInstances() {
-            loading.value = true;
+        let foregroundLoads = 0;
+
+        async function loadInstances({ background = false } = {}) {
+            if (!background) {
+                foregroundLoads += 1;
+                loading.value = true;
+            }
             try {
                 instances.value = await request('/instances');
             } catch (error) {
                 ElementPlus.ElMessage.error(error.message);
             } finally {
-                loading.value = false;
+                if (!background) {
+                    foregroundLoads -= 1;
+                    loading.value = foregroundLoads > 0;
+                }
             }
         }
 
@@ -209,7 +217,7 @@ createApp({
             if (!autoRefresh.value) return;
             if (refreshCountdown.value <= 1) {
                 refreshCountdown.value = 10;
-                loadInstances();
+                loadInstances({ background: true });
             } else {
                 refreshCountdown.value -= 1;
             }
