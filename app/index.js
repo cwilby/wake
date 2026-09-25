@@ -1,4 +1,5 @@
 import express from 'express';
+import { readFileSync } from 'node:fs';
 import agentConnections from './utils/agent-connections.js';
 import morgan from 'morgan';
 import { createHash, randomBytes } from 'node:crypto';
@@ -11,6 +12,7 @@ import { defaultShutdownCommands } from './utils/shutdown.js';
 import { createShutdownStrategy } from './strategies/shutdown.js';
 
 const app = express();
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const publicDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 
 function toBoolean(value) {
@@ -86,6 +88,8 @@ async function getInstances() {
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.static(publicDirectory));
+
+app.get('/version', (_req, res) => res.set('Cache-Control', 'no-store').json({ version }));
 
 app.get('/instances', async (req, res) => res.json(await getInstances()));
 

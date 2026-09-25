@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node main.js",
+    "build": "node scripts/version.mjs",
     "test": "node --test"
   },
   "engines": {

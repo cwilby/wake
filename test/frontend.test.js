@@ -17,12 +17,13 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
         window: { location: { origin: 'http://wake.test:8091' }, setInterval() {}, clearInterval() {} },
         fetch: async (_url, options = {}) => ({
             ok: true, status: options.method === 'POST' ? 201 : 200,
-            json: async () => options.method === 'POST'
+            json: async () => _url === '/version' ? { version: '2.3.4' } : options.method === 'POST'
                 ? { id: 2, type: 'remote-agent', enrollment_token: 'test-enrollment-token' }
                 : [structuredClone(machine)]
         })
     });
     await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ui.appVersion.value, '2.3.4');
     ui.openEdit(ui.instances.value[0]);
     ui.editTab.value = 'shutdown';
     ui.strategyForm.value.type = 'remote-agent';

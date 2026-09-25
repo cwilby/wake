@@ -13,6 +13,7 @@ curl --fail --silent --show-error --location --retry 3 "https://nodejs.org/dist/
 mkdir -p "$work/wake-agent/runtime" dist
 unzip -p "$work/$archive" "node-${node_version}-win-x64/node.exe" > "$work/wake-agent/runtime/node.exe"
 unzip -p "$work/$archive" "node-${node_version}-win-x64/LICENSE" > "$work/wake-agent/runtime/LICENSE"
+node -p "require('./package.json').version" > "$work/wake-agent/VERSION"
 cp agent/index.js "$work/wake-agent/agent.mjs"
 cp agent/windows/*.ps1 agent/windows/README.txt "$work/wake-agent/"
 printf '%s\n' "$node_version" > "$work/wake-agent/runtime/VERSION"

@@ -3,6 +3,7 @@ const { createApp, ref, computed, onUnmounted } = Vue;
 createApp({
     setup() {
         const instances = ref([]);
+        const appVersion = ref('');
         const loading = ref(false);
         const saving = ref(false);
         const wakingId = ref(null);
@@ -213,6 +214,7 @@ createApp({
             }[state];
         }
 
+        request('/version').then(data => { appVersion.value = data.version; }).catch(() => {});
         loadInstances();
         const refreshTimer = window.setInterval(() => {
             if (!autoRefresh.value) return;
@@ -224,6 +226,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

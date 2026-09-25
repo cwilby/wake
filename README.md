@@ -61,6 +61,7 @@ Set these repository **Actions secrets**:
 
 | Secret | Value |
 | --- | --- |
+| `RELEASE_TOKEN` | Gitea access token with repository write permission, allowed to create `v*` tags |
 | `DEPLOY_USER` | SSH username on `192.168.86.2` (the account whose home contains `docker/wake`) |
 | `DEPLOY_SSH_KEY` | Unencrypted deployment private key; authorize its public key on the destination |
 | `DEPLOY_KNOWN_HOSTS` | Verified SSH known-hosts entry for `192.168.86.2` |
@@ -78,3 +79,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1 -WakeUrl "
 Paste the remote-agent enrollment token at the hidden prompt. The installer copies the package to `C:\ProgramData\WakeAgent`, restricts access to Administrators/SYSTEM, and registers **Wake Agent** in Task Scheduler. It starts immediately and at boot as SYSTEM without a user login, runs indefinitely, and restarts after failures. Logs are in `C:\ProgramData\WakeAgent\agent.log`. Run `Uninstall.ps1` as Administrator to remove the task.
 
 The package is for Windows x64; this is a Task Scheduler startup task, not a Windows Service Control Manager service. Use the bundled `README.txt` for update and removal instructions.
+
+
+## Release versions
+
+The build runs `npm run build` to update `package.json` and both version fields in `package-lock.json`. It reads the latest commit message (subject and body):
+
+- `#major`: increment major and reset minor/patch, e.g. `1.2.3` → `2.0.0`.
+- `#minor`: increment minor and reset patch, e.g. `1.2.3` → `1.3.0`.
+- No marker: increment patch, e.g. `1.2.3` → `1.2.4`.
+
+Markers are case-insensitive; major wins if both appear. For a multi-commit push, put the marker in the final commit message. The baseline is the greater of the checked-in package version and the highest stable `vX.Y.Z` Git tag. With the initial `1.0.0` baseline, the first unmarked build is `1.0.1`.
+
+After packaging succeeds, CI publishes the version tag on the source commit using `RELEASE_TOKEN`. It does not push a version-only commit or trigger another branch build. A retry of a tagged commit reuses that release version. The deploy job applies that exact version before rsync and the Docker rebuild. Release workflows are serialized with a concurrency group; older Gitea installations without concurrency support should use a single release runner slot. A conflicting tag push fails the build before deployment.
+
+The application shows its version next to **Wake** in the header, loaded from `GET /version`. The Windows ZIP also contains a top-level `VERSION` file; `runtime/VERSION` identifies its bundled Node.js version. Local `npm run build` updates the manifests but does not create or push tags.

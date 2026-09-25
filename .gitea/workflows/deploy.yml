@@ -5,14 +5,22 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# Serialize releases so two builds cannot allocate the same version.
+concurrency:
+  group: wake-release
+  cancel-in-progress: false
+
 jobs:
   build:
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     runs-on: ubuntu-latest
     container: node:24-bookworm
     steps:
       - uses: https://github.com/actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
       - name: Install packaging tools
         run: |
           apt-get update
@@ -21,6 +29,9 @@ jobs:
         run: |
           npm ci
           npm test
+      - name: Bump release version
+        id: version
+        run: npm run build
       - name: Build portable Windows agent
         run: bash scripts/package-windows-agent.sh
       # v3 uses the artifact protocol supported by older Gitea installations.
@@ -30,6 +41,14 @@ jobs:
           path: dist/wake-agent-windows-x64.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Publish version tag
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ! git rev-parse --verify "refs/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            git tag "v$RELEASE_VERSION"
+          fi
+          git push origin "refs/tags/v$RELEASE_VERSION"
 
   deploy:
     needs: build
@@ -39,6 +58,10 @@ jobs:
       - uses: https://github.com/actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Apply build version
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --ignore-scripts --allow-same-version
       - name: Install deployment tools
         run: |
           apt-get update
