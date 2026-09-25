@@ -17,4 +17,4 @@ services:
       WAKE_MYSQL_HOST: 192.168.86.2
       WAKE_MYSQL_USERNAME: root
       WAKE_MYSQL_PASSWORD: secret
-      WAKE_MYSQL_DATABASE: wake
+      WAKE_MYSQL_DATABASE: wake #test
