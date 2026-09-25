@@ -1,4 +1,4 @@
-const { createApp, ref, onUnmounted } = Vue;
+const { createApp, ref, computed, onUnmounted } = Vue;
 
 createApp({
     setup() {
@@ -12,8 +12,8 @@ createApp({
         const dialogOpen = ref(false);
         const editingId = ref(null);
         const form = ref(emptyForm());
-        const shutdownDialogOpen = ref(false);
-        const shutdownInstance = ref(null);
+        const editTab = ref('machine');
+        const shutdownInstance = computed(() => instances.value.find(instance => instance.id === editingId.value));
         const strategySaving = ref(false);
         const enrollmentToken = ref('');
         const strategyForm = ref(emptyStrategyForm());
@@ -61,12 +61,14 @@ createApp({
         }
 
         function openCreate() {
+            resetEditor();
             editingId.value = null;
             form.value = emptyForm();
             dialogOpen.value = true;
         }
 
         function openEdit(instance) {
+            resetEditor();
             editingId.value = instance.id;
             form.value = {
                 name: instance.name,
@@ -137,11 +139,10 @@ createApp({
             }
         }
 
-        function openShutdownSetup(instance) {
-            shutdownInstance.value = instance;
+        function resetEditor() {
+            editTab.value = 'machine';
             strategyForm.value = emptyStrategyForm();
             enrollmentToken.value = '';
-            shutdownDialogOpen.value = true;
         }
 
         async function addShutdownStrategy() {
@@ -156,7 +157,6 @@ createApp({
                 });
                 enrollmentToken.value = strategy.enrollment_token || '';
                 await loadInstances();
-                shutdownInstance.value = instances.value.find(instance => instance.id === shutdownInstance.value.id);
                 strategyForm.value = emptyStrategyForm();
                 ElementPlus.ElMessage.success('Shutdown strategy added.');
             } catch (error) {
@@ -215,6 +215,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, shutdownDialogOpen, shutdownInstance, strategySaving, enrollmentToken, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, openShutdownSetup, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

@@ -1,4 +1,5 @@
 import express from 'express';
+import agentConnections from './utils/agent-connections.js';
 import morgan from 'morgan';
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
@@ -36,6 +37,7 @@ function publicStrategy(strategy) {
         host: strategy.host,
         shutdown_command: strategy.shutdown_command,
         agent_last_seen_at: strategy.agent_last_seen_at,
+        agent_connected: agentConnections.has(strategy.id),
         shutdown_requested_at: strategy.shutdown_requested_at,
         has_private_key: Boolean(strategy.private_key)
     };
@@ -124,6 +126,7 @@ app.delete('/instances/:instance', async (req, res) => {
         await tx.query('DELETE FROM instance_mac WHERE instance_id = ?', [instance]);
         await tx.delete('instance', instance);
     });
+    agentConnections.disconnectInstance(req.params.instance);
     res.sendStatus(204);
 });
 
@@ -150,7 +153,8 @@ app.post('/instances/:instance/shutdown-strategies', async (req, res) => {
 });
 
 app.delete('/instances/:instance/shutdown-strategies/:strategy', async (req, res) => {
-    await db.query('DELETE FROM shutdown_strategy WHERE id = ? AND instance_id = ?', [req.params.strategy, req.params.instance]);
+    const { results } = await db.query('DELETE FROM shutdown_strategy WHERE id = ? AND instance_id = ?', [req.params.strategy, req.params.instance]);
+    if (results.affectedRows) agentConnections.disconnect(req.params.strategy);
     res.sendStatus(204);
 });
 
@@ -171,22 +175,37 @@ async function findRemoteAgent(token) {
     return results[0] ?? null;
 }
 
-app.post('/agent/commands/next', async (req, res) => {
-    const strategy = await findRemoteAgent(req.body?.token);
+function agentToken(req) {
+    const authorization = req.get('authorization');
+    return authorization?.startsWith('Bearer ') ? authorization.slice(7) : req.body?.token;
+}
+
+app.get('/agent/events', async (req, res) => {
+    const strategy = await findRemoteAgent(agentToken(req));
     if (!strategy) return res.sendStatus(401);
     await db.update('shutdown_strategy', strategy.id, { agent_last_seen_at: new Date() });
-    res.json({ shutdown: Boolean(strategy.shutdown_request_id), request_id: strategy.shutdown_request_id });
+    if (res.destroyed) return;
+    agentConnections.connect(strategy, res);
+    try {
+        // Subscribe before reading the queue so a concurrent shutdown cannot be missed.
+        const current = await db.find('shutdown_strategy', strategy.id);
+        if (!current) return agentConnections.disconnect(strategy.id);
+        agentConnections.send(strategy.id, current.shutdown_request_id);
+    } catch (error) {
+        res.destroy();
+        console.error('Unable to read queued agent command:', error.message);
+    }
 });
 
 app.post('/agent/commands/:request/complete', async (req, res) => {
-    const strategy = await findRemoteAgent(req.body?.token);
+    const strategy = await findRemoteAgent(agentToken(req));
     if (!strategy) return res.sendStatus(401);
-    if (strategy.shutdown_request_id !== req.params.request) return res.sendStatus(404);
-    await db.update('shutdown_strategy', strategy.id, {
-        shutdown_request_id: null,
-        shutdown_requested_at: null,
-        agent_last_seen_at: new Date()
-    });
+    // Only one agent may claim this command; stale acknowledgements cannot clear a newer one.
+    const { results } = await db.query(
+        'UPDATE shutdown_strategy SET shutdown_request_id = NULL, shutdown_requested_at = NULL, agent_last_seen_at = ? WHERE id = ? AND shutdown_request_id = ?',
+        [new Date(), strategy.id, req.params.request]
+    );
+    if (!results.affectedRows) return res.sendStatus(409);
     res.sendStatus(204);
 });
 
