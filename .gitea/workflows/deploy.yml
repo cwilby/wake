@@ -1,0 +1,51 @@
+name: Deploy Wake and package Windows agent
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl unzip zip
+      - name: Test
+        run: |
+          npm ci
+          npm test
+      - name: Build portable Windows agent
+        run: bash scripts/package-windows-agent.sh
+      # v3 uses the artifact protocol supported by older Gitea installations.
+      - uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: wake-agent-windows-x64
+          path: dist/wake-agent-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    steps:
+      - uses: https://github.com/actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install deployment tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends rsync openssh-client
+      - name: Sync application
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash scripts/deploy.sh
