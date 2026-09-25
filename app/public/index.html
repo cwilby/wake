@@ -63,15 +63,14 @@
         .enrollment-token .el-textarea { margin-top: 10px; }
         .enrollment-token .el-textarea__inner { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
         .enrollment-token p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-        .refresh-button { min-width: 110px; }
+        .refresh-button { width: 32px; min-width: 32px; padding: 0; flex: none; }
         .refresh-controls { display: flex; align-items: center; gap: 12px; }
         .auto-refresh-toggle { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-        .refresh-dial { display: inline-block; width: 14px; height: 14px; margin-right: 3px; border: 2px solid #b8c0d0; border-top-color: #3e79eb; border-radius: 50%; animation: refresh-spin 10s linear infinite; vertical-align: -2px; }
+        .refresh-dial { display: inline-block; width: 14px; height: 14px; border: 2px solid #b8c0d0; border-top-color: #3e79eb; border-radius: 50%; animation: refresh-spin 10s linear infinite; vertical-align: -2px; }
         .refresh-button.is-loading .refresh-dial { animation-duration: .75s; }
-        .refresh-button.is-paused .refresh-dial { animation-play-state: paused; }
-        .refresh-count { margin-left: 3px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+        .refresh-button.is-paused:not(.is-loading) .refresh-dial { animation-play-state: paused; }
         @keyframes refresh-spin { to { transform: rotate(360deg); } }
-        @media (max-width: 580px) { .topbar { min-height:64px; } .page { padding-top: 26px; } .intro { align-items: stretch; flex-direction: column; } .refresh-controls, .intro .el-button { width: 100%; } .refresh-controls .refresh-button { flex: 1; } .instance-grid { grid-template-columns: 1fr; } .card-actions .el-button { flex: 1; } .el-dialog.machine-dialog { width: calc(100% - 24px); } }
+        @media (max-width: 580px) { .topbar { min-height:64px; } .page { padding-top: 26px; } .intro { align-items: stretch; flex-direction: column; } .refresh-controls { width: 100%; justify-content: space-between; } .instance-grid { grid-template-columns: 1fr; } .card-actions .el-button { flex: 1; } .el-dialog.machine-dialog { width: calc(100% - 24px); } }
     </style>
 </head>
 <body>
@@ -83,7 +82,7 @@
         <main class="page">
             <section class="intro">
                 <div><h1>Your machines</h1><p>Wake devices on your network, wherever you are.</p></div>
-                <div class="refresh-controls"><label class="auto-refresh-toggle"><el-switch v-model="autoRefresh" size="small" @change="setAutoRefresh"></el-switch> Auto-refresh</label><el-button class="refresh-button" :class="{ 'is-loading': loading }" plain @click="refreshNow"><span v-if="autoRefresh" class="refresh-dial"></span> Refresh <span v-if="autoRefresh" class="refresh-count">{{ refreshCountdown }}s</span></el-button></div>
+                <div class="refresh-controls"><label class="auto-refresh-toggle"><el-switch v-model="autoRefresh" size="small" @change="setAutoRefresh"></el-switch> Auto-refresh</label><el-button class="refresh-button" :class="{ 'is-loading': loading, 'is-paused': !autoRefresh }" plain aria-label="Refresh machines" title="Refresh machines" @click="refreshNow"><span class="refresh-dial" aria-hidden="true"></span></el-button></div>
             </section>
             <div v-loading="loading" class="instance-grid">
                 <article v-for="instance in instances" :key="instance.id"><el-card shadow="never" class="instance-card">
