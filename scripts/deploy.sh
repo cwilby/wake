@@ -37,7 +37,7 @@ if [[ -f dist/wake-agent-windows-x64.zip ]]; then
         -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
         "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
         'powershell.exe -NoProfile -NonInteractive -Command "& {
-            Write-Host "Testing";
-            Write-Host "Testing Twice";
+            Write-Host \"Testing\";
+            Write-Host \"Testing Twice\";
         }"'
 fi
