@@ -56,7 +56,7 @@ jobs:
       - name: Install deployment tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends rsync openssh-client
+          apt-get install -y --no-install-recommends rsync openssh-client zip
           npm install
       - name: Build portable Windows agent  
         run: bash scripts/package-windows-agent.sh
