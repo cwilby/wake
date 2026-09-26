@@ -36,10 +36,13 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
     let row;
     let streamRequests = 0;
     let acknowledgements = 0;
-    const original = { query: db.query, find: db.find, update: db.update };
+    const original = { query: db.query, find: db.find, update: db.update, create: db.create };
+    let notificationId = 0;
+    db.create = async (_table, data) => ({ ...data, id: ++notificationId });
     db.find = async (table, id) => table === 'instance' ? (Number(id) === 1 ? { id: 1 } : null) : row ? { ...row } : null;
     db.update = async (_table, _id, values) => { if (row) Object.assign(row, values); };
     db.query = async (sql, args) => {
+        if (sql.startsWith('UPDATE notification')) return { results: { affectedRows: 1 } };
         if (sql.startsWith('SELECT') && sql.includes('agent_token_hash')) {
             streamRequests++;
             return { results: row && args[1] === row.agent_token_hash ? [{ ...row }] : [] };
@@ -135,6 +138,27 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
             stop.abort();
             await running;
         }
+    });
+
+    await t.test('agent handles live notices once, ignores expired notices, and keeps accepting shutdowns after display failure', async () => {
+        reset();
+        const stop = new AbortController();
+        let notices = 0;
+        let executions = 0;
+        const running = runAgent({ wakeUrl, token, logger, signal: stop.signal,
+            notify: async () => { notices++; throw new Error('Desktop unavailable'); },
+            executeCommand: async () => { executions++; } });
+        try {
+            await until(() => connections.has(1));
+            const notice = { id: 100, title: 'Shutdown soon', message: 'Save your work.', expires_at: Date.now() + 600_000 };
+            connections.notifyInstance(1, notice);
+            connections.notifyInstance(1, notice);
+            connections.notifyInstance(1, { ...notice, id: 101, expires_at: Date.now() - 1 });
+            await until(() => notices === 1);
+            await queue();
+            await until(() => executions === 1);
+            assert.equal(notices, 1);
+        } finally { stop.abort(); await running; }
     });
 
     await t.test('coalesces offline commands and delivers after reconnect', async () => {

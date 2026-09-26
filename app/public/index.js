@@ -4,6 +4,54 @@ createApp({
     setup() {
         const instances = ref([]);
         const appVersion = ref('');
+        const notifications = ref([]);
+        const notificationsOpen = ref(false);
+        const notificationsConnected = ref(false);
+        let lastRead = 0;
+        try { lastRead = Number(window.localStorage.getItem('wake-notifications-read')) || 0; } catch {}
+        const notificationsReadThrough = ref(lastRead);
+        const unreadNotifications = computed(() => notifications.value.filter(item => item.id > notificationsReadThrough.value).length);
+        const warningToasts = new Map();
+
+        function markNotificationsRead() {
+            notificationsReadThrough.value = Math.max(notificationsReadThrough.value, ...notifications.value.map(item => item.id));
+            try { window.localStorage.setItem('wake-notifications-read', String(notificationsReadThrough.value)); } catch {}
+        }
+
+        function mergeNotifications(items) {
+            const merged = new Map(notifications.value.map(item => [item.id, item]));
+            items.forEach(item => merged.set(item.id, item));
+            notifications.value = [...merged.values()].sort((a, b) => b.id - a.id).slice(0, 50);
+            if (notificationsOpen.value) markNotificationsRead();
+        }
+
+        function receiveNotification(event) {
+            const item = JSON.parse(event.data);
+            const seen = notifications.value.some(existing => existing.id === item.id);
+            mergeNotifications([item]);
+            if (item.type === 'schedule_changed') {
+                warningToasts.get(item.instance_id)?.close();
+                warningToasts.delete(item.instance_id);
+                for (const existing of notifications.value) {
+                    if (existing.instance_id === item.instance_id && existing.type === 'shutdown_warning') existing.expires_at = Date.now();
+                }
+            }
+            if (!seen && item.type === 'shutdown_warning' && item.expires_at > Date.now()) {
+                warningToasts.get(item.instance_id)?.close();
+                const toast = ElementPlus.ElNotification({ title: item.title, message: item.message, type: 'warning', duration: 0 });
+                warningToasts.set(item.instance_id, toast);
+                window.setTimeout(() => { toast.close(); if (warningToasts.get(item.instance_id) === toast) warningToasts.delete(item.instance_id); }, item.expires_at - Date.now());
+            }
+        }
+
+        if (window.EventSource) {
+            const events = new window.EventSource('/notifications/events');
+            events.addEventListener('snapshot', event => mergeNotifications(JSON.parse(event.data)));
+            events.addEventListener('notification', receiveNotification);
+            events.onopen = () => { notificationsConnected.value = true; };
+            events.onerror = () => { notificationsConnected.value = false; };
+            onUnmounted(() => { events.close(); warningToasts.forEach(toast => toast.close()); });
+        }
         const loading = ref(false);
         const saving = ref(false);
         const wakingId = ref(null);
@@ -15,9 +63,12 @@ createApp({
         const form = ref(emptyForm());
         const editTab = ref('machine');
         const scheduleSaving = ref(false);
+        const wakeScheduleSaving = ref(false);
+        const scheduleKind = ref('wake');
         const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         const timezones = [...new Set([localTimezone, 'UTC', ...Intl.supportedValuesOf('timeZone')])];
-        const scheduleForm = ref({ enabled: false, time: '00:00', timezone: localTimezone });
+        const scheduleForm = ref({ enabled: false, time: '00:00', timezone: localTimezone, warning_minutes: 10 });
+        const wakeScheduleForm = ref({ enabled: false, time: '08:00', timezone: localTimezone });
         const shutdownInstance = computed(() => instances.value.find(instance => instance.id === editingId.value));
         const strategySaving = ref(false);
         const enrollmentToken = ref('');
@@ -84,6 +135,7 @@ createApp({
         function openEdit(instance) {
             resetEditor();
             editingId.value = instance.id;
+            if (instance.wake_schedule) wakeScheduleForm.value = { ...instance.wake_schedule };
             if (instance.shutdown_schedule) scheduleForm.value = { ...instance.shutdown_schedule };
             form.value = {
                 name: instance.name,
@@ -156,9 +208,26 @@ createApp({
 
         function resetEditor() {
             editTab.value = 'machine';
-            scheduleForm.value = { enabled: false, time: '00:00', timezone: localTimezone };
+            scheduleKind.value = 'wake';
+            wakeScheduleForm.value = { enabled: false, time: '08:00', timezone: localTimezone };
+            scheduleForm.value = { enabled: false, time: '00:00', timezone: localTimezone, warning_minutes: 10 };
             strategyForm.value = emptyStrategyForm();
             enrollmentToken.value = '';
+        }
+
+        async function saveWakeSchedule() {
+            wakeScheduleSaving.value = true;
+            try {
+                await request(`/instances/${editingId.value}/wake-schedule`, {
+                    method: 'PUT', body: JSON.stringify(wakeScheduleForm.value)
+                });
+                await loadInstances();
+                ElementPlus.ElMessage.success(wakeScheduleForm.value.enabled ? 'Daily wake scheduled.' : 'Wake schedule disabled.');
+            } catch (error) {
+                ElementPlus.ElMessage.error(error.message);
+            } finally {
+                wakeScheduleSaving.value = false;
+            }
         }
 
         async function saveShutdownSchedule() {
@@ -247,6 +316,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, notifications, notificationsOpen, notificationsConnected, unreadNotifications, markNotificationsRead, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

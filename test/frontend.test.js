@@ -6,6 +6,9 @@ import vm from 'node:vm';
 test('remote-agent enrollment retains token through refresh and exposes its endpoint to the template', async () => {
     let ui;
     const requests = [];
+    const eventHandlers = {};
+    let notices = 0;
+    const storage = new Map();
     const machine = { id: 1, name: 'Desktop', active: true, hosts: [], macs: [], shutdown_strategies: [] };
     vm.runInNewContext(fs.readFileSync(new URL('../app/public/index.js', import.meta.url), 'utf8'), {
         Vue: {
@@ -14,8 +17,12 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
             onUnmounted() {},
             createApp(options) { ui = options.setup(); return { use() { return this; }, mount() {} }; }
         },
-        ElementPlus: { ElMessage: { success() {}, error(message) { throw new Error(message); } } },
-        window: { location: { origin: 'http://wake.test:8091' }, setInterval() {}, clearInterval() {} },
+        ElementPlus: { ElNotification() { notices++; return { close() {} }; }, ElMessage: { success() {}, error(message) { throw new Error(message); } } },
+        window: {
+            location: { origin: 'http://wake.test:8091' }, setInterval() {}, clearInterval() {}, setTimeout() {},
+            localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+            EventSource: class { addEventListener(type, fn) { eventHandlers[type] = fn; } close() {} }
+        },
         fetch: async (_url, options = {}) => {
             requests.push({ url: _url, ...options });
             return ({
@@ -28,6 +35,16 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ui.appVersion.value, '2.3.4');
+    const warning = { id: 2, instance_id: 1, type: 'shutdown_warning', title: 'Warning', message: 'Save work', expires_at: Date.now() + 600_000 };
+    eventHandlers.notification({ data: JSON.stringify(warning) });
+    eventHandlers.snapshot({ data: JSON.stringify([{ id: 1, type: 'wake_requested' }, warning]) });
+    eventHandlers.notification({ data: JSON.stringify(warning) });
+    assert.equal(notices, 1);
+    assert.equal(ui.notifications.value.length, 2);
+    assert.equal(ui.unreadNotifications.value, 2);
+    ui.markNotificationsRead();
+    assert.equal(ui.unreadNotifications.value, 0);
+    assert.equal(storage.get('wake-notifications-read'), '2');
     ui.openEdit(ui.instances.value[0]);
     ui.editTab.value = 'shutdown';
     ui.strategyForm.value.type = 'remote-agent';
@@ -41,14 +58,23 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
     assert.match(template, /\{\{ agentEndpoint \}\}/);
     assert.doesNotMatch(template, /\{\{\s*location\./);
     ui.editTab.value = 'schedule';
-    ui.scheduleForm.value = { enabled: true, time: '00:00', timezone: 'America/Los_Angeles' };
+    ui.scheduleForm.value = { enabled: true, time: '00:00', timezone: 'America/Los_Angeles', warning_minutes: 15 };
     await ui.saveShutdownSchedule();
     const saved = requests.find(request => request.url.endsWith('/shutdown-schedule'));
     assert.equal(saved.method, 'PUT');
-    assert.deepEqual(JSON.parse(saved.body), { enabled: true, time: '00:00', timezone: 'America/Los_Angeles' });
+    assert.deepEqual(JSON.parse(saved.body), { enabled: true, time: '00:00', timezone: 'America/Los_Angeles', warning_minutes: 15 });
     assert.equal(ui.scheduleForm.value.enabled, true, 'refresh must not reset the edited schedule');
+    ui.scheduleKind.value = 'wake';
+    ui.wakeScheduleForm.value = { enabled: true, time: '08:30', timezone: 'UTC' };
+    await ui.saveWakeSchedule();
+    const savedWake = requests.find(request => request.url.endsWith('/wake-schedule'));
+    assert.deepEqual(JSON.parse(savedWake.body), { enabled: true, time: '08:30', timezone: 'UTC' });
+    assert.equal(ui.scheduleForm.value.warning_minutes, 15, 'wake editing preserves shutdown settings');
     ui.openCreate();
+    assert.equal(ui.wakeScheduleForm.value.enabled, false);
+    assert.equal(ui.wakeScheduleForm.value.time, '08:00');
     assert.equal(ui.scheduleForm.value.enabled, false);
     assert.equal(ui.scheduleForm.value.time, '00:00');
+    assert.equal(ui.scheduleForm.value.warning_minutes, 10);
     assert.equal(ui.enrollmentToken.value, '');
 });

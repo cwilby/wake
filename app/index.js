@@ -1,4 +1,6 @@
 import express from 'express';
+import notifications from './services/notifications.js';
+import { publicWakeSchedule, registerWakeScheduleRoutes } from './services/wake-schedules.js';
 import { publicSchedule, registerScheduleRoutes } from './services/shutdown-schedules.js';
 import { readFileSync } from 'node:fs';
 import agentConnections from './utils/agent-connections.js';
@@ -60,19 +62,21 @@ async function getInstances() {
     const { results: instances } = await db.query('SELECT * FROM instance ORDER BY name');
     if (!instances.length) return [];
     const ids = instances.map(instance => instance.id);
-    const [{ results: hosts }, { results: macs }, { results: strategies }, { results: schedules }] = await Promise.all([
+    const [{ results: hosts }, { results: macs }, { results: strategies }, { results: schedules }, { results: wakeSchedules }] = await Promise.all([
         db.query('SELECT instance_id, address FROM instance_host WHERE instance_id IN (?) ORDER BY address', [ids]),
         db.query('SELECT instance_id, address FROM instance_mac WHERE instance_id IN (?) ORDER BY address', [ids]),
         db.query('SELECT * FROM shutdown_strategy WHERE instance_id IN (?) ORDER BY id', [ids]),
-        db.query('SELECT * FROM shutdown_schedule WHERE instance_id IN (?)', [ids])
+        db.query('SELECT * FROM shutdown_schedule WHERE instance_id IN (?)', [ids]),
+        db.query('SELECT * FROM wake_schedule WHERE instance_id IN (?)', [ids])
     ]);
     const byInstance = new Map(instances.map(instance => [instance.id, {
-        ...instance, active: toBoolean(instance.active), hosts: [], macs: [], shutdown_strategies: [], shutdown_schedule: null
+        ...instance, active: toBoolean(instance.active), hosts: [], macs: [], shutdown_strategies: [], shutdown_schedule: null, wake_schedule: null
     }]));
     hosts.forEach(host => byInstance.get(host.instance_id).hosts.push({ address: host.address }));
     macs.forEach(mac => byInstance.get(mac.instance_id).macs.push({ address: mac.address }));
     strategies.forEach(strategy => byInstance.get(strategy.instance_id).shutdown_strategies.push(publicStrategy(strategy)));
     schedules.forEach(schedule => { byInstance.get(schedule.instance_id).shutdown_schedule = publicSchedule(schedule); });
+    wakeSchedules.forEach(schedule => { byInstance.get(schedule.instance_id).wake_schedule = publicWakeSchedule(schedule); });
     const hydratedInstances = [...byInstance.values()];
 
     await Promise.all(hydratedInstances.map(async instance => {
@@ -90,7 +94,16 @@ async function getInstances() {
 
 app.use(morgan('dev'));
 app.use(express.json());
-registerScheduleRoutes(app, db);
+notifications.register(app);
+registerScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachine(instanceId, {
+    type: 'schedule_changed', title: schedule.enabled ? 'Shutdown schedule updated' : 'Shutdown schedule disabled',
+    message: schedule.enabled ? `Daily shutdown at ${schedule.time} (${schedule.timezone}). Warning: ${schedule.warning_minutes ?? 10} minutes before.` : 'Daily shutdown is now disabled.',
+    expiresAt: Date.now() + 120_000
+}));
+registerWakeScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachine(instanceId, {
+    type: 'wake_schedule_changed', title: schedule.enabled ? 'Wake schedule updated' : 'Wake schedule disabled',
+    message: schedule.enabled ? `Daily wake at ${schedule.time} (${schedule.timezone}).` : 'Daily wake is now disabled.'
+}));
 app.use(express.static(publicDirectory));
 
 app.get('/version', (_req, res) => res.set('Cache-Control', 'no-store').json({ version }));
@@ -170,7 +183,14 @@ app.post('/instances/:instance/shutdown', async (req, res) => {
     const { results: strategies } = await db.query('SELECT * FROM shutdown_strategy WHERE instance_id = ?', [req.params.instance]);
     if (!strategies.length) return res.status(409).json({ error: 'No shutdown strategy is configured for this instance.' });
 
-    const results = await Promise.all(strategies.map(strategy => createShutdownStrategy(strategy).execute()));
+    let results;
+    try {
+        results = await Promise.all(strategies.map(strategy => createShutdownStrategy(strategy).execute()));
+        await notifications.forMachine(req.params.instance, { type: 'shutdown_requested', title: 'Shutdown requested', message: 'Shutdown request sent. This is not confirmation that the computer has powered off.' });
+    } catch (error) {
+        await notifications.forMachine(req.params.instance, { type: 'shutdown_failed', title: 'Shutdown request failed', message: 'Unable to send one or more shutdown requests. Check the shutdown configuration.' });
+        throw error;
+    }
     res.status(202).json({ results });
 });
 
@@ -231,6 +251,7 @@ app.post('/instances/:instance/wake', async (req, res) => {
         for (const mac of macs) await wake(mac.address);
         await tx.update('instance', Number(req.params.instance), { last_wake_request: new Date() });
     });
+    await notifications.forMachine(req.params.instance, { type: 'wake_requested', title: 'Start requested', message: 'Wake-on-LAN packets sent.' });
     res.sendStatus(204);
 });
 

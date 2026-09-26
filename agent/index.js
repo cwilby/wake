@@ -4,7 +4,6 @@ import { pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const execute = promisify(exec);
-
 // Fetch chunks may split a line or contain several events (including heartbeats).
 export async function* readCommands(body, onActivity = () => {}) {
     const decoder = new TextDecoder();

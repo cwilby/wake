@@ -97,10 +97,31 @@ The application shows its version next to **Wake** in the header, loaded from `G
 
 ## Daily shutdown schedules
 
-Open a machine's **Edit → Schedule** tab, enable **Daily shutdown**, choose a time and timezone, and select **Save schedule**. The default is midnight (`00:00`) in your browser's timezone. Configure an SSH or remote-agent shutdown strategy first. Turn off Daily shutdown and save to pause the timer.
+Open a machine's **Edit → Schedules → Shutdown** tab, enable **Daily shutdown**, choose a time and timezone, and select **Save schedule**. The default is midnight (`00:00`) in your browser's timezone. Configure an SSH or remote-agent shutdown strategy first. Turn off Daily shutdown and save to pause the timer.
 
 Wake checks saved schedules every 15 seconds on the server; the dashboard does not need to remain open. A machine runs at most once per local calendar day. Its configured timezone follows daylight-saving changes: a repeated time runs once, and a time skipped by the spring-forward transition is skipped that day. Times missed while Wake is stopped are not replayed. Last run time and dispatch result appear in the Schedule tab; a sent request is not confirmation that the operating system powered off.
 
 Offline remote agents are skipped. Scheduled agent commands are sent only over an existing connection, expire after 60 seconds, and are never replayed on reconnect. SSH attempts fail normally if a machine is unreachable. Manual shutdown requests retain their existing durable queue behavior. Failed scheduled attempts are recorded and are not retried that day; send a manual request if needed. Claims are persisted before dispatch to prevent duplicate runs after a restart; a crash between claiming and sending can therefore skip that day's shutdown.
 
 The database migration creates `shutdown_schedule` and adds scheduled-command expiry to `shutdown_strategy` automatically at startup. Schedule configuration is available through `PUT /instances/:instance/shutdown-schedule` with `{ "enabled": true, "time": "00:00", "timezone": "America/Los_Angeles" }`, and is returned as `shutdown_schedule` by `GET /instances`.
+
+## Notifications
+
+The header bell opens a live notification panel with the latest 50 events: start requests, manual shutdown requests/failures, schedule changes, upcoming shutdowns, and scheduled shutdown results. Read state is remembered in each browser. Updates use a persistent event stream at `/notifications/events`, so turning off machine auto-refresh does not disable notifications. The Wake page must remain open to receive live dashboard alerts; this does not use background browser push.
+
+In **Edit → Schedules → Shutdown**, set **Warn before shutdown (minutes)**. The default is **10**, the range is **0–120**, and **0** disables the advance warning. Both new and existing schedules default to 10 minutes after migration. At the warning time, Wake records a notification, shows an alert in open dashboards, and sends it over the existing connection to the machine's remote agents. Reminders are claimed once per scheduled local date, including midnight and daylight-saving transitions. A missed warning is not replayed after downtime or agent reconnect. Shutdown still happens on schedule even if a notification cannot be displayed.
+
+For Windows desktop warnings, download the updated Windows agent ZIP and run `Install.ps1` again. The bundle includes `Notify.ps1`, which uses Windows Terminal Services messaging to display a warning to active logged-in sessions even while the agent runs as SYSTEM. It is a desktop message, not an Action Center toast. It dismisses after two minutes and does not require acknowledgement to proceed. Schedule changes also send a desktop notice. If no user is logged in, no desktop message is shown; the dashboard history still records the event. Agents on other platforms log notices to their console. SSH-only machines receive dashboard notifications but have no desktop notification channel.
+
+Behind a reverse proxy, allow long-lived streams and disable response buffering for `/notifications/events` just as for `/agent/events`. Notification history is stored in MySQL; the existing startup migration adds the notification table and warning settings.
+
+
+## Daily wake schedules
+
+Open **Edit → Schedules → Wake**, enable **Daily wake**, choose a time and timezone, and save. The default is 8:00 AM in your browser's timezone. Wake and shutdown schedules are saved independently, so you can wake a machine in the morning and shut it down at night.
+
+Scheduled wakes send Wake-on-LAN packets to every configured MAC address. Wake requests must be enabled and at least one MAC must be configured before enabling the schedule. If wake requests are later paused or all MACs are removed, the scheduled attempt is skipped. Wake-on-LAN must be enabled on the target computer; a successful packet send does not guarantee the machine powered on. No remote agent or SSH connection is required.
+
+The server runs the schedule while the browser is closed, once per local calendar day with the same timezone/DST handling as shutdown schedules. Missed wake times are not replayed after downtime. Last run details appear under the Wake schedule and in the notification panel. Wake schedules do not issue shutdown-warning notifications.
+
+The startup migration creates `wake_schedule`. `PUT /instances/:instance/wake-schedule` accepts `{ "enabled": true, "time": "08:00", "timezone": "America/Los_Angeles" }`, and `GET /instances` includes each machine's `wake_schedule`.

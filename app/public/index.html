@@ -13,6 +13,13 @@
         .topbar { min-height: 72px; padding: 0 max(20px, calc((100vw - 1180px) / 2)); display: flex; align-items: center; justify-content: space-between; color: white; background: radial-gradient(circle at 15% 20%, #34456c 0, #172033 45%, #101625 100%); }
         .brand { display: flex; align-items: center; gap: 11px; font-size: 22px; font-weight: 750; letter-spacing: -.5px; }
         .app-version { font-size: 12px; font-weight: 500; color: #b8c0d0; letter-spacing: 0; white-space: nowrap; }
+        .topbar-actions { display: flex; align-items: center; gap: 16px; }
+        .notification-bell.el-button { color: white; border-color: #ffffff40; background: transparent; width: 36px; height: 36px; padding: 8px; }
+        .notification-list { list-style: none; padding: 0; margin: 18px 0 0; }
+        .notification-item { padding: 16px 0; border-top: 1px solid var(--line); }
+        .notification-item strong { font-size: 14px; }
+        .notification-item p { margin: 6px 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+        .notification-item time { font-size: 11px; color: var(--muted); }
         .brand-mark { display:grid; place-items:center; height: 35px; width: 35px; border-radius: 12px; background: var(--orange); box-shadow: 0 5px 18px #ff7a4560; }
         .page { max-width: 1180px; margin: 0 auto; padding: 38px 20px 54px; }
         .intro { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 25px; }
@@ -50,6 +57,7 @@
         .machine-dialog .el-tabs { display: flex; flex-direction: column; min-height: 0; }
         .machine-dialog .el-tabs__header { flex: none; }
         .machine-dialog .el-tabs__content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 4px 4px; }
+        .schedule-kind { margin-bottom: 20px; }
         .strategy-empty { margin: 0; padding: 12px; border-radius: 8px; background: #f7f9fc; color: var(--muted); font-size: 13px; }
         .dialog-form .el-form-item { margin-bottom: 20px; }
         .address-editor { padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: #fafbfc; }
@@ -78,7 +86,10 @@
     <div id="app">
         <header class="topbar">
             <div class="brand"><span class="brand-mark">☀</span> Wake <span v-if="appVersion" class="app-version">v{{ appVersion }}</span></div>
-            <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
+            <div class="topbar-actions">
+                <el-badge :value="unreadNotifications" :hidden="!unreadNotifications" :max="99"><el-button class="notification-bell" aria-label="Notifications" title="Notifications" @click="notificationsOpen = true; markNotificationsRead()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></el-button></el-badge>
+                <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
+            </div>
         </header>
         <main class="page">
             <section class="intro">
@@ -104,6 +115,7 @@
                                 <p class="context-status">{{ stateLabel(instance.state) }} · Wake {{ instance.active ? 'enabled' : 'paused' }}</p>
                                 <div class="address-section"><div class="section-title"><span>Hosts</span><span>{{ instance.hosts.length }}</span></div><div class="address-list"><span v-for="host in instance.hosts" :key="host.address">{{ host.address }}</span><span v-if="!instance.hosts.length">None configured</span></div></div>
                                 <div class="address-section"><div class="section-title"><span>MAC addresses</span><span>{{ instance.macs.length }}</span></div><div class="address-list"><span v-for="mac in instance.macs" :key="mac.address">{{ mac.address }}</span><span v-if="!instance.macs.length">None configured</span></div></div>
+                                <p v-if="instance.wake_schedule && instance.wake_schedule.enabled" class="context-note">Daily wake · {{ instance.wake_schedule.time }}<br>{{ instance.wake_schedule.timezone }}</p>
                                 <p v-if="instance.shutdown_schedule && instance.shutdown_schedule.enabled" class="context-note">Daily shutdown · {{ instance.shutdown_schedule.time }}<br>{{ instance.shutdown_schedule.timezone }}</p>
                                 <p class="context-note">{{ instance.shutdown_strategies.length ? 'Shutdown configured' : 'To enable shutdown, choose Edit → Shutdown settings.' }}<template v-if="!instance.macs.length"><br>Add a MAC address to enable start.</template></p>
                         </el-popover>
@@ -116,6 +128,11 @@
             </div>
             <section v-if="!loading && !instances.length" class="empty"><div class="empty-icon">☀</div><strong>No machines yet</strong><p>Add an instance to begin waking devices.</p><el-button type="primary" @click="openCreate">Add your first instance</el-button></section>
         </main>
+        <el-drawer v-model="notificationsOpen" title="Notifications" size="min(420px, 100vw)">
+            <p class="settings-note">{{ notificationsConnected ? 'Live updates connected' : 'Reconnecting to notifications…' }}</p>
+            <p v-if="!notifications.length" class="settings-note">No notifications yet. Start requests, shutdown results, and schedule warnings will appear here.</p>
+            <ol class="notification-list"><li v-for="notice in notifications" :key="notice.id" class="notification-item"><strong>{{ notice.title }}</strong><p>{{ notice.message }}</p><time>{{ new Date(notice.created_at).toLocaleString() }}</time></li></ol>
+        </el-drawer>
         <el-dialog class="machine-dialog" v-model="dialogOpen" :title="editingId ? 'Edit machine' : 'Add instance'" width="600px" :close-on-click-modal="false">
             <el-tabs v-model="editTab">
                 <el-tab-pane label="Machine" name="machine">
@@ -131,8 +148,16 @@
                     <p class="settings-note">Shutdown strategies are saved when you add or remove them.</p>
             <template v-if="shutdownInstance"><div class="strategy-list"><div v-for="strategy in shutdownInstance.shutdown_strategies" :key="strategy.id" class="strategy-row"><span><strong>{{ strategy.type === 'ssh' ? 'SSH' : 'Remote agent' }}</strong><span v-if="strategy.host"> · {{ strategy.host }}</span><span v-if="strategy.type === 'remote-agent'"> · {{ strategy.agent_connected ? 'Connected' : 'Disconnected' }}</span></span><el-button text type="danger" @click="removeShutdownStrategy(strategy)">Remove</el-button></div></div><p v-if="!shutdownInstance.shutdown_strategies.length" class="strategy-empty">No shutdown strategy configured.</p><el-divider>Add strategy</el-divider><el-form label-position="top"><el-form-item label="Type"><el-radio-group v-model="strategyForm.type"><el-radio-button value="ssh">SSH</el-radio-button><el-radio-button value="remote-agent">Remote agent</el-radio-button></el-radio-group></el-form-item><template v-if="strategyForm.type === 'ssh'"><el-form-item label="Remote platform"><el-select v-model="strategyForm.platform"><el-option label="Linux" value="linux"></el-option><el-option label="macOS" value="macos"></el-option><el-option label="Windows" value="windows"></el-option></el-select></el-form-item><el-form-item label="SSH host" required><el-input v-model="strategyForm.host" placeholder="user@host.example"></el-input></el-form-item><el-form-item label="Private key" required><el-input v-model="strategyForm.private_key" type="textarea" :rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></el-input></el-form-item><el-form-item label="Shutdown command (optional)"><el-input v-model="strategyForm.shutdown_command" placeholder="Platform default"></el-input></el-form-item></template><p v-else class="dialog-note">Wake shows the enrollment token once. Run an agent on the machine that stays connected to Wake and receives shutdown requests instantly.</p><el-button type="primary" :loading="strategySaving" @click="addShutdownStrategy">Add {{ strategyForm.type === 'ssh' ? 'SSH' : 'agent' }} strategy</el-button></el-form></template>
                 </el-tab-pane>
-                <el-tab-pane v-if="editingId" label="Schedule" name="schedule">
-                    <el-form label-position="top" @submit.prevent="saveShutdownSchedule">
+                <el-tab-pane v-if="editingId" label="Schedules" name="schedule">
+                    <el-radio-group v-model="scheduleKind" class="schedule-kind" aria-label="Schedule type"><el-radio-button value="wake">Wake</el-radio-button><el-radio-button value="shutdown">Shutdown</el-radio-button></el-radio-group>
+                    <el-form v-show="scheduleKind === 'wake'" label-position="top" @submit.prevent="saveWakeSchedule">
+                        <el-form-item><el-switch v-model="wakeScheduleForm.enabled" active-text="Daily wake"></el-switch></el-form-item>
+                        <el-form-item label="Wake every day at"><el-input v-model="wakeScheduleForm.time" type="time" aria-label="Daily wake time"></el-input></el-form-item>
+                        <el-form-item label="Timezone"><el-select v-model="wakeScheduleForm.timezone" filterable aria-label="Wake schedule timezone"><el-option v-for="zone in timezones" :key="zone" :label="zone.replaceAll('_', ' ')" :value="zone"></el-option></el-select></el-form-item>
+                        <p class="settings-note">Sends Wake-on-LAN packets even when this page is closed. Enable wake requests and add a MAC address in the Machine tab. Missed wake times are not replayed.</p>
+                        <p v-if="shutdownInstance && shutdownInstance.wake_schedule && shutdownInstance.wake_schedule.last_run_at" class="settings-note">Last run: {{ new Date(shutdownInstance.wake_schedule.last_run_at).toLocaleString() }}<br>{{ shutdownInstance.wake_schedule.last_result }}</p>
+                    </el-form>
+                    <el-form v-show="scheduleKind === 'shutdown'" label-position="top" @submit.prevent="saveShutdownSchedule">
                         <el-form-item><el-switch v-model="scheduleForm.enabled" active-text="Daily shutdown"></el-switch></el-form-item>
                         <el-form-item label="Shut down every day at">
                             <el-input v-model="scheduleForm.time" type="time" aria-label="Daily shutdown time"></el-input>
@@ -140,12 +165,14 @@
                         <el-form-item label="Timezone">
                             <el-select v-model="scheduleForm.timezone" filterable aria-label="Schedule timezone"><el-option v-for="zone in timezones" :key="zone" :label="zone.replaceAll('_', ' ')" :value="zone"></el-option></el-select>
                         </el-form-item>
+                        <el-form-item label="Warn before shutdown (minutes)"><el-input-number v-model="scheduleForm.warning_minutes" :min="0" :max="120" :step="1" step-strictly></el-input-number></el-form-item>
+                        <p class="settings-note">Warnings appear in Wake and on connected Windows agents. Set 0 to disable warnings. Windows agents need the updated download.</p>
                         <p class="settings-note">Runs even when this page is closed. Offline agents are skipped, and missed times are not replayed. Add a shutdown strategy in Shutdown settings first.</p>
                         <p v-if="shutdownInstance && shutdownInstance.shutdown_schedule && shutdownInstance.shutdown_schedule.last_run_at" class="settings-note">Last run: {{ new Date(shutdownInstance.shutdown_schedule.last_run_at).toLocaleString() }}<br>{{ shutdownInstance.shutdown_schedule.last_result }}</p>
                     </el-form>
                 </el-tab-pane>
             </el-tabs>
-            <template #footer><el-button v-if="editTab === 'schedule'" type="primary" :loading="scheduleSaving" @click="saveShutdownSchedule">Save schedule</el-button><el-button :disabled="saving || strategySaving || scheduleSaving" @click="dialogOpen = false">Close</el-button><el-button v-if="editTab === 'machine'" type="primary" :loading="saving" @click="saveInstance">{{ editingId ? 'Save changes' : 'Add instance' }}</el-button></template>
+            <template #footer><el-button v-if="editTab === 'schedule'" type="primary" :loading="scheduleSaving || wakeScheduleSaving" @click="scheduleKind === 'wake' ? saveWakeSchedule() : saveShutdownSchedule()">Save {{ scheduleKind }} schedule</el-button><el-button :disabled="saving || strategySaving || scheduleSaving || wakeScheduleSaving" @click="dialogOpen = false">Close</el-button><el-button v-if="editTab === 'machine'" type="primary" :loading="saving" @click="saveInstance">{{ editingId ? 'Save changes' : 'Add instance' }}</el-button></template>
         </el-dialog>
     </div>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>

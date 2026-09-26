@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createShutdownScheduler, localClock, validateSchedule } from '../app/services/shutdown-schedules.js';
+import { createShutdownScheduler, localClock, validateSchedule, warningOccurrence } from '../app/services/shutdown-schedules.js';
 
 test('schedule input validates times, timezones, and enabled flag', () => {
     assert.equal(validateSchedule({ enabled: true, time: '00:00', timezone: 'America/Los_Angeles' }), null);
@@ -20,6 +20,11 @@ function fixture({ time = '00:00', timezone = 'America/Los_Angeles', instant = '
     let calls = 0;
     const db = { query: async (sql, args) => {
         if (sql.startsWith('SELECT')) return { results: row.enabled ? [{ ...row }] : [] };
+        if (sql.includes('SET last_warning_date')) {
+            if (!row.enabled || row.last_warning_date === args[0] || row.last_run_date === args[0]) return { results: { affectedRows: 0 } };
+            row.last_warning_date = args[0];
+            return { results: { affectedRows: 1 } };
+        }
         if (sql.includes('SET last_run_date')) {
             if (!row.enabled || row.last_run_date === args[0]) return { results: { affectedRows: 0 } };
             row.last_run_date = args[0];
@@ -73,4 +78,37 @@ test('concurrent schedulers atomically claim once and record dispatch failures',
     f.options.dispatch = async () => { retried = true; };
     await createShutdownScheduler(f.options).tick();
     assert.equal(retried, false);
+});
+
+
+test('warning lead crosses midnight, is configurable, and can be disabled', () => {
+    const schedule = { time_of_day: '00:00', timezone: 'America/Los_Angeles', warning_minutes: 10 };
+    assert.equal(warningOccurrence(schedule, new Date('2026-09-25T06:50:15Z')).dueAt.toISOString(), '2026-09-25T07:00:00.000Z');
+    assert.equal(warningOccurrence(schedule, new Date('2026-09-25T06:51:00Z')), null);
+    assert.equal(warningOccurrence({ ...schedule, warning_minutes: 30 }, new Date('2026-09-25T06:30:00Z')).minutes, 30);
+    assert.equal(warningOccurrence({ ...schedule, warning_minutes: 0 }, new Date('2026-09-25T06:50:00Z')), null);
+    for (const warning_minutes of [-1, 121, 1.5, '10', null]) {
+        assert.ok(validateSchedule({ enabled: true, time: '00:00', timezone: 'UTC', warning_minutes }));
+    }
+});
+
+test('reminders claim once across concurrent ticks and restarts without dispatching early', async () => {
+    const f = fixture({ instant: '2026-09-25T06:50:00Z' });
+    const notices = [];
+    f.options.warn = async (id, warning) => { notices.push({ id, ...warning }); };
+    await Promise.all([createShutdownScheduler(f.options).tick(), createShutdownScheduler(f.options).tick()]);
+    await createShutdownScheduler(f.options).tick();
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].minutes, 10);
+    assert.equal(f.calls(), 0);
+    f.at('2026-09-25T07:00:00Z');
+    await createShutdownScheduler(f.options).tick();
+    assert.equal(f.calls(), 1);
+});
+
+test('warnings honor DST jumps and never announce a second fall-back occurrence', () => {
+    const schedule = { time_of_day: '01:30', timezone: 'America/Los_Angeles', warning_minutes: 120 };
+    assert.ok(warningOccurrence(schedule, new Date('2026-11-01T06:30:00Z')));
+    assert.equal(warningOccurrence(schedule, new Date('2026-11-01T07:30:00Z')), null);
+    assert.equal(warningOccurrence({ ...schedule, time_of_day: '02:30', warning_minutes: 10 }, new Date('2026-03-08T10:20:00Z')), null);
 });
