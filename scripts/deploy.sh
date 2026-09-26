@@ -24,20 +24,29 @@ ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
     "${DEPLOY_USER}@192.168.86.2" \
     'cd docker/wake && docker compose up -d --build --force-recreate'
 
-# Deploy the uploaded artifact for this gitea action
-if [[ -f dist/wake-agent-windows-x64.zip ]]; then
-    echo "Uploading Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
-    scp -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
-        -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
-        ./dist/wake-agent-windows-x64.zip \
-        "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}:/C:/Applications/wake-agent-windows-x64.zip"
-
-    echo "Deploying Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
-    ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
-        -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
-        "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
-        'powershell.exe -NoProfile -NonInteractive -Command "& {
-            Write-Host \"Testing\";
-            Write-Host \"Testing Twice\";
-        }"'
+if [[ ! -f dist/wake-agent-windows-x64.zip ]]; then
+    exit 0;
 fi
+
+# Deploy the uploaded artifact for this gitea action
+echo "Uploading Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
+scp -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+    -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+    ./dist/wake-agent-windows-x64.zip \
+    "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}:/C:/Applications/wake-agent-windows-x64.zip"
+
+echo "Deploying Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
+
+ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+    -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+    "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
+    'powershell.exe -NoProfile -NonInteractive -Command -' <<'POWERSHELL'
+Stop-ScheduledTask -TaskName "Wake Agent" -ErrorAction SilentlyContinue
+
+Expand-Archive `
+    -Path "C:\Applications\wake-agent-windows-x64.zip" `
+    -DestinationPath "C:\Applications\wake-agent" `
+    -Force
+
+Start-ScheduledTask -TaskName "Wake Agent"
+POWERSHELL
