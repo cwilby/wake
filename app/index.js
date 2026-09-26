@@ -94,7 +94,6 @@ async function getInstances() {
 
 app.use(morgan('dev'));
 app.use(express.json());
-notifications.register(app);
 registerScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachine(instanceId, {
     type: 'schedule_changed', title: schedule.enabled ? 'Shutdown schedule updated' : 'Shutdown schedule disabled',
     message: schedule.enabled ? `Daily shutdown at ${schedule.time} (${schedule.timezone}). Warning: ${schedule.warning_minutes ?? 10} minutes before.` : 'Daily shutdown is now disabled.',

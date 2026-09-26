@@ -4,54 +4,6 @@ createApp({
     setup() {
         const instances = ref([]);
         const appVersion = ref('');
-        const notifications = ref([]);
-        const notificationsOpen = ref(false);
-        const notificationsConnected = ref(false);
-        let lastRead = 0;
-        try { lastRead = Number(window.localStorage.getItem('wake-notifications-read')) || 0; } catch {}
-        const notificationsReadThrough = ref(lastRead);
-        const unreadNotifications = computed(() => notifications.value.filter(item => item.id > notificationsReadThrough.value).length);
-        const warningToasts = new Map();
-
-        function markNotificationsRead() {
-            notificationsReadThrough.value = Math.max(notificationsReadThrough.value, ...notifications.value.map(item => item.id));
-            try { window.localStorage.setItem('wake-notifications-read', String(notificationsReadThrough.value)); } catch {}
-        }
-
-        function mergeNotifications(items) {
-            const merged = new Map(notifications.value.map(item => [item.id, item]));
-            items.forEach(item => merged.set(item.id, item));
-            notifications.value = [...merged.values()].sort((a, b) => b.id - a.id).slice(0, 50);
-            if (notificationsOpen.value) markNotificationsRead();
-        }
-
-        function receiveNotification(event) {
-            const item = JSON.parse(event.data);
-            const seen = notifications.value.some(existing => existing.id === item.id);
-            mergeNotifications([item]);
-            if (item.type === 'schedule_changed') {
-                warningToasts.get(item.instance_id)?.close();
-                warningToasts.delete(item.instance_id);
-                for (const existing of notifications.value) {
-                    if (existing.instance_id === item.instance_id && existing.type === 'shutdown_warning') existing.expires_at = Date.now();
-                }
-            }
-            if (!seen && item.type === 'shutdown_warning' && item.expires_at > Date.now()) {
-                warningToasts.get(item.instance_id)?.close();
-                const toast = ElementPlus.ElNotification({ title: item.title, message: item.message, type: 'warning', duration: 0 });
-                warningToasts.set(item.instance_id, toast);
-                window.setTimeout(() => { toast.close(); if (warningToasts.get(item.instance_id) === toast) warningToasts.delete(item.instance_id); }, item.expires_at - Date.now());
-            }
-        }
-
-        if (window.EventSource) {
-            const events = new window.EventSource('/notifications/events');
-            events.addEventListener('snapshot', event => mergeNotifications(JSON.parse(event.data)));
-            events.addEventListener('notification', receiveNotification);
-            events.onopen = () => { notificationsConnected.value = true; };
-            events.onerror = () => { notificationsConnected.value = false; };
-            onUnmounted(() => { events.close(); warningToasts.forEach(toast => toast.close()); });
-        }
         const loading = ref(false);
         const saving = ref(false);
         const wakingId = ref(null);
@@ -339,6 +291,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { overrideLoading, overrideShutdown, wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, notifications, notificationsOpen, notificationsConnected, unreadNotifications, markNotificationsRead, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { overrideLoading, overrideShutdown, wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

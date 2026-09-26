@@ -6,9 +6,6 @@ import vm from 'node:vm';
 test('remote-agent enrollment retains token through refresh and exposes its endpoint to the template', async () => {
     let ui;
     const requests = [];
-    const eventHandlers = {};
-    let notices = 0;
-    const storage = new Map();
     const machine = { id: 1, name: 'Desktop', active: true, hosts: [], macs: [], shutdown_strategies: [] };
     vm.runInNewContext(fs.readFileSync(new URL('../app/public/index.js', import.meta.url), 'utf8'), {
         Vue: {
@@ -17,11 +14,10 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
             onUnmounted() {},
             createApp(options) { ui = options.setup(); return { use() { return this; }, mount() {} }; }
         },
-        ElementPlus: { ElNotification() { notices++; return { close() {} }; }, ElMessage: { success() {}, error(message) { throw new Error(message); } } },
+        ElementPlus: { ElMessage: { success() {}, error(message) { throw new Error(message); } } },
         window: {
             location: { origin: 'http://wake.test:8091' }, setInterval() {}, clearInterval() {}, setTimeout() {},
-            localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-            EventSource: class { addEventListener(type, fn) { eventHandlers[type] = fn; } close() {} }
+            localStorage: { getItem() {}, setItem() {} }
         },
         fetch: async (_url, options = {}) => {
             requests.push({ url: _url, ...options });
@@ -35,16 +31,7 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ui.appVersion.value, '2.3.4');
-    const warning = { id: 2, instance_id: 1, type: 'shutdown_warning', title: 'Warning', message: 'Save work', expires_at: Date.now() + 600_000 };
-    eventHandlers.notification({ data: JSON.stringify(warning) });
-    eventHandlers.snapshot({ data: JSON.stringify([{ id: 1, type: 'wake_requested' }, warning]) });
-    eventHandlers.notification({ data: JSON.stringify(warning) });
-    assert.equal(notices, 1);
-    assert.equal(ui.notifications.value.length, 2);
-    assert.equal(ui.unreadNotifications.value, 2);
-    ui.markNotificationsRead();
-    assert.equal(ui.unreadNotifications.value, 0);
-    assert.equal(storage.get('wake-notifications-read'), '2');
+    assert.equal('notifications' in ui, false);
     ui.openEdit(ui.instances.value[0]);
     ui.editTab.value = 'shutdown';
     ui.strategyForm.value.type = 'remote-agent';

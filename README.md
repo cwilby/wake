@@ -107,15 +107,15 @@ The database migration creates `shutdown_schedule` and adds scheduled-command ex
 
 ## Notifications
 
-The header bell opens a live notification panel with the latest 50 events: start requests, manual shutdown requests/failures, schedule changes, upcoming shutdowns, and scheduled shutdown results. Read state is remembered in each browser. Updates use a persistent event stream at `/notifications/events`, so turning off machine auto-refresh does not disable notifications. The Wake page must remain open to receive live dashboard alerts; this does not use background browser push.
+Wake sends machine alerts through Pushover. It does not show notification badges, toasts, or a notification history in the web dashboard. Phone alerts include start and shutdown requests/results, schedule changes, and upcoming shutdown warnings. Opening a shutdown warning takes you to that machine's schedule controls.
 
-In **Edit → Schedules → Shutdown**, set **Warn before shutdown (minutes)**. The default is **10**, the range is **0–120**, and **0** disables the advance warning. Both new and existing schedules default to 10 minutes after migration. Wake records the warning, shows an alert in open dashboards, and sends it to your phone through Pushover. The computer agent displays no notifications. Reminders are claimed once per scheduled local date, including midnight and daylight-saving transitions. A missed warning is not replayed after downtime. Shutdown still happens on schedule if the phone notification cannot be delivered.
+In **Edit → Schedules → Shutdown**, set **Warn before shutdown (minutes)**. The default is **10**, the range is **0–120**, and **0** disables the advance warning. Both new and existing schedules default to 10 minutes after migration. Wake sends the warning to your phone through Pushover. The web dashboard and computer agent display no notifications. Reminders are claimed once per scheduled local date, including midnight and daylight-saving transitions. A missed warning is not replayed after downtime. Shutdown still happens on schedule if the phone notification cannot be delivered.
 
 Configure Pushover by creating an application to get its app token and using your Pushover user key. Add the values shown in `.env.example` to your Compose `.env` file, preserving any settings already there. Set `WAKE_PUSHOVER_APP_TOKEN`, `WAKE_PUSHOVER_USER_KEY`, and `WAKE_PUBLIC_URL`; the URL must be reachable from your phone. `WAKE_PUSHOVER_DEVICE` is optional. Restart Wake after setting them. Pushover warnings link to the affected machine's schedule controls and expire at the scheduled shutdown time.
 
 Each machine card shows the next scheduled shutdown with **Skip** and **Delay 1 hour** controls. These apply only to the upcoming occurrence, leaving the daily schedule intact. A delay is rejected if it would overlap the next daily shutdown. If Wake is offline at the scheduled time, the shutdown is skipped rather than queued.
 
-Behind a reverse proxy, allow long-lived streams and disable response buffering for `/notifications/events` just as for `/agent/events`. Notification history is stored in MySQL; the existing startup migration adds the notification table and warning settings.
+Behind a reverse proxy, allow the long-lived `/agent/events` stream and disable response buffering for that route.
 
 
 ## Daily wake schedules
@@ -124,6 +124,6 @@ Open **Edit → Schedules → Wake**, enable **Daily wake**, choose a time and t
 
 Scheduled wakes send Wake-on-LAN packets to every configured MAC address. Wake requests must be enabled and at least one MAC must be configured before enabling the schedule. If wake requests are later paused or all MACs are removed, the scheduled attempt is skipped. Wake-on-LAN must be enabled on the target computer; a successful packet send does not guarantee the machine powered on. No remote agent or SSH connection is required.
 
-The server runs the schedule while the browser is closed, once per local calendar day with the same timezone/DST handling as shutdown schedules. Missed wake times are not replayed after downtime. Last run details appear under the Wake schedule and in the notification panel. Wake schedules do not issue shutdown-warning notifications.
+The server runs the schedule while the browser is closed, once per local calendar day with the same timezone/DST handling as shutdown schedules. Missed wake times are not replayed after downtime. Last run details appear under the Wake schedule. Wake schedule results are sent through Pushover.
 
 The startup migration creates `wake_schedule`. `PUT /instances/:instance/wake-schedule` accepts `{ "enabled": true, "time": "08:00", "timezone": "America/Los_Angeles" }`, and `GET /instances` includes each machine's `wake_schedule`.

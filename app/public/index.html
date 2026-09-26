@@ -14,12 +14,6 @@
         .brand { display: flex; align-items: center; gap: 11px; font-size: 22px; font-weight: 750; letter-spacing: -.5px; }
         .app-version { font-size: 12px; font-weight: 500; color: #b8c0d0; letter-spacing: 0; white-space: nowrap; }
         .topbar-actions { display: flex; align-items: center; gap: 16px; }
-        .notification-bell.el-button { color: white; border-color: #ffffff40; background: transparent; width: 36px; height: 36px; padding: 8px; }
-        .notification-list { list-style: none; padding: 0; margin: 18px 0 0; }
-        .notification-item { padding: 16px 0; border-top: 1px solid var(--line); }
-        .notification-item strong { font-size: 14px; }
-        .notification-item p { margin: 6px 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-        .notification-item time { font-size: 11px; color: var(--muted); }
         .brand-mark { display:grid; place-items:center; height: 35px; width: 35px; border-radius: 12px; background: var(--orange); box-shadow: 0 5px 18px #ff7a4560; }
         .page { max-width: 1180px; margin: 0 auto; padding: 38px 20px 54px; }
         .intro { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 25px; }
@@ -89,7 +83,6 @@
         <header class="topbar">
             <div class="brand"><span class="brand-mark">☀</span> Wake <span v-if="appVersion" class="app-version">v{{ appVersion }}</span></div>
             <div class="topbar-actions">
-                <el-badge :value="unreadNotifications" :hidden="!unreadNotifications" :max="99"><el-button class="notification-bell" aria-label="Notifications" title="Notifications" @click="notificationsOpen = true; markNotificationsRead()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></el-button></el-badge>
                 <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
             </div>
         </header>
@@ -135,11 +128,6 @@
             </div>
             <section v-if="!loading && !instances.length" class="empty"><div class="empty-icon">☀</div><strong>No machines yet</strong><p>Add an instance to begin waking devices.</p><el-button type="primary" @click="openCreate">Add your first instance</el-button></section>
         </main>
-        <el-drawer v-model="notificationsOpen" title="Notifications" size="min(420px, 100vw)">
-            <p class="settings-note">{{ notificationsConnected ? 'Live updates connected' : 'Reconnecting to notifications…' }}</p>
-            <p v-if="!notifications.length" class="settings-note">No notifications yet. Start requests, shutdown results, and schedule warnings will appear here.</p>
-            <ol class="notification-list"><li v-for="notice in notifications" :key="notice.id" class="notification-item"><strong>{{ notice.title }}</strong><p>{{ notice.message }}</p><time>{{ new Date(notice.created_at).toLocaleString() }}</time></li></ol>
-        </el-drawer>
         <el-dialog class="machine-dialog" v-model="dialogOpen" :title="editingId ? 'Edit machine' : 'Add instance'" width="600px" :close-on-click-modal="false">
             <el-tabs v-model="editTab">
                 <el-tab-pane label="Machine" name="machine">

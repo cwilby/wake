@@ -1,17 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { createNotificationService } from '../app/services/notifications.js';
 
-class Response extends EventEmitter {
-    text = '';
-    set(headers) { this.headers = headers; }
-    flushHeaders() {}
-    write(chunk) { this.text += chunk; return true; }
-    destroy() { this.destroyed = true; this.emit('close'); }
-}
-
-test('notification history and live events reach dashboard; phone routing is explicit', async () => {
+test('machine notifications are recorded and sent through Pushover', async () => {
     const history = [];
     const phone = [];
     const service = createNotificationService({
@@ -23,21 +14,11 @@ test('notification history and live events reach dashboard; phone routing is exp
         sendPhone: async notice => phone.push(notice)
     });
     await service.forMachine(1, { type: 'wake_requested', title: 'Start requested', message: 'Wake packets sent.' });
-    let connect;
-    service.register({ get: (path, route) => { assert.equal(path, '/notifications/events'); connect = route; } });
-    const res = new Response();
-    try {
-        await connect({}, res);
-        assert.match(res.text, /event: snapshot/);
-        assert.match(res.text, /Machine · Start requested/);
-        assert.equal(phone.length, 0);
-        await service.forMachine(1, { type: 'shutdown_warning', title: 'Shutdown soon', message: 'Save your work.', phone: true, expiresAt: Date.now() + 600_000 });
-        assert.match(res.text, /event: notification/);
-        assert.equal(phone.length, 1);
-        assert.equal(phone[0].id, 2);
-        assert.equal(phone[0].type, 'shutdown_warning');
-        assert.equal(res.headers['X-Accel-Buffering'], 'no');
-    } finally { res.destroy(); }
+    await service.forMachine(1, { type: 'shutdown_warning', title: 'Shutdown soon', message: 'Save your work.', expiresAt: Date.now() + 600_000 });
+    assert.equal(phone.length, 2);
+    assert.equal(phone[0].title, 'Machine · Start requested');
+    assert.equal(phone[1].id, 2);
+    assert.equal(phone[1].type, 'shutdown_warning');
 });
 
 test('notification storage failures are contained instead of failing power actions', async () => {
