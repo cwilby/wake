@@ -12,13 +12,19 @@ export const defaultShutdownCommands = {
     windows: 'shutdown /s /t 0'
 };
 
+export function commandForSshHost(command, host) {
+    const username = String(host).match(/^([^@]+)@/)?.[1];
+    if (username?.toLowerCase() === 'root' && command === defaultShutdownCommands.linux) return 'shutdown -h now';
+    return command;
+}
+
 export async function shutdownOverSsh({ host, private_key: privateKey, shutdown_command: command }) {
     const directory = await mkdtemp(path.join(tmpdir(), 'wake-ssh-'));
     const keyPath = path.join(directory, 'identity');
     try {
         await writeFile(keyPath, privateKey, { mode: 0o600 });
         await chmod(keyPath, 0o600);
-        await execute('ssh', ['-i', keyPath, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '--', host, command], { timeout: 20_000 });
+        await execute('ssh', ['-i', keyPath, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '--', host, commandForSshHost(command, host)], { timeout: 20_000 });
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

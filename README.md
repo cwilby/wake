@@ -27,7 +27,7 @@ The dashboard is served by Express and uses Vue 3 and Element Plus directly from
 
 An instance can use either or both shutdown strategies:
 
-- **SSH** — Wake connects to the configured `user@host` using its stored private key and runs the platform default command (`sudo shutdown -h now` for Linux/macOS, `shutdown /s /t 0` for Windows), or a configured replacement command.
+- **SSH** — Wake connects to the configured `user@host` using its stored private key and runs the platform default command (`sudo shutdown -h now` for non-root Linux/macOS logins, `shutdown -h now` for root, and `shutdown /s /t 0` for Windows), or a configured replacement command.
 - **Remote agent** — the dashboard shows an enrollment token once. The agent keeps an authenticated HTTP event stream open at `GET /agent/events` (Server-Sent Events). Wake pushes shutdown commands over that connection immediately. The agent acknowledges a command using `POST /agent/commands/:request_id/complete` before running its local shutdown command. Both requests use `Authorization: Bearer <token>`.
 
 Commands remain queued in MySQL while the agent is offline and are delivered when it reconnects. Repeated shutdown requests share the pending command until it is acknowledged. An acknowledgement atomically claims a command so duplicate deliveries cannot execute it twice. As before, acknowledgement means receipt, not successful shutdown: if the local command fails or the machine crashes after acknowledgement, send a new request after fixing the problem.
