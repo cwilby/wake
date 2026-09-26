@@ -48,3 +48,4 @@ npm test
 GitHub Actions runs tests on pushes and pull requests. To prepare a release, run `npm run build`, commit the updated version, create the matching `vX.Y.Z` tag, and push it. The tag workflow publishes a GitHub Release with the Windows agent and a Docker image to GHCR. A `#major` or `#minor` marker in the latest commit message selects that version bump; otherwise the patch version advances.
 
 See [`.env.example`](.env.example) for environment variable names. Wake is licensed under the [MIT License](LICENSE).
+
