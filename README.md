@@ -51,47 +51,30 @@ If Wake is behind a reverse proxy, disable response buffering for `/agent/events
 
 Wake does not run background availability checks or scheduled pings. Each `GET /instances` request checks the configured hosts on demand, so the dashboard shows a current up/down result only when it is refreshed.
 
-## Gitea Actions deployment and Windows download
+## GitHub Actions and releases
 
-`.gitea/workflows/deploy.yml` runs on pushes to `master` and manual dispatch. It tests the application, builds a portable Windows x64 agent ZIP, uploads it to the run's **Artifacts**, then syncs the application to `192.168.86.2:docker/wake/` over SSH. After syncing, it runs `docker compose up -d --build --force-recreate` in the remote `~/docker/wake` directory to rebuild the image and restart the Compose services. A sync or Compose failure fails the deployment job. Linux rsync uses `-avz` for archive, verbose, and compression.
+GitHub Actions runs the test suite on pushes and pull requests. Pushing a semantic version tag such as `v1.2.3` creates a GitHub Release with a portable Windows x64 agent ZIP and publishes the Docker image to GitHub Container Registry (`ghcr.io`). The Windows package includes Node.js and the agent installer scripts; it contains no enrollment credentials. Its bundled Node.js runtime is verified against its SHA-256 checksum during packaging.
 
-Enable repository Actions and provide a Linux Docker runner labelled `ubuntu-latest` that can reach `192.168.86.2:22`, your Gitea server, GitHub Actions repositories, npm, and nodejs.org. The workflow uses a Node 24 Debian container and installs its packaging/deployment tools inside that container.
-
-Set these repository **Actions secrets**:
-
-| Secret | Value |
-| --- | --- |
-| `RELEASE_TOKEN` | Gitea access token with repository write permission, allowed to create `v*` tags |
-| `DEPLOY_USER` | SSH username on `192.168.86.2` (the account whose home contains `docker/wake`) |
-| `DEPLOY_SSH_KEY` | Unencrypted deployment private key; authorize its public key on the destination |
-| `DEPLOY_KNOWN_HOSTS` | Verified SSH known-hosts entry for `192.168.86.2` |
-
-The remote account needs write access to `~/docker/wake`, its parent `~/docker` must exist, and rsync plus Docker Compose must be installed on the destination. The SSH account must be able to run Docker without an interactive sudo prompt. The sync preserves remote-only files and excludes `.git`, `node_modules`, build downloads, and `.env` files. Configure the production environment on the destination. SSH host-key checking stays enabled.
-
-After a successful build, open the workflow run and download **wake-agent-windows-x64** from **Artifacts**. Extract the artifact and its included `wake-agent-windows-x64.zip`. The package includes Node.js, the persistent agent, and installation/uninstallation scripts. No credentials are included in the download. Node's Windows runtime is verified against its official SHA-256 checksum during packaging.
-
-In an **Administrator Windows PowerShell**, change to the extracted `wake-agent` directory and run:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1 -WakeUrl "http://192.168.86.2:8091"
-```
-
-Paste the remote-agent enrollment token at the hidden prompt. The installer copies the package to `C:\ProgramData\WakeAgent`, restricts access to Administrators/SYSTEM, and registers **Wake Agent** in Task Scheduler. It starts immediately and at boot as SYSTEM without a user login, runs indefinitely, and restarts after failures. Logs are in `C:\ProgramData\WakeAgent\agent.log`. Run `Uninstall.ps1` as Administrator to remove the task.
-
-The package is for Windows x64; this is a Task Scheduler startup task, not a Windows Service Control Manager service. Use the bundled `README.txt` for update and removal instructions.
-
-
-## Release versions
-
-The build runs `npm run build` to update `package.json` and both version fields in `package-lock.json`. It reads the latest commit message (subject and body):
+To prepare a release, `npm run build` updates `package.json` and both version fields in `package-lock.json`. It reads the latest commit message (subject and body):
 
 - `#major`: increment major and reset minor/patch, e.g. `1.2.3` → `2.0.0`.
 - `#minor`: increment minor and reset patch, e.g. `1.2.3` → `1.3.0`.
 - No marker: increment patch, e.g. `1.2.3` → `1.2.4`.
 
-Markers are case-insensitive; major wins if both appear. For a multi-commit push, put the marker in the final commit message. The baseline is the greater of the checked-in package version and the highest stable `vX.Y.Z` Git tag. With the initial `1.0.0` baseline, the first unmarked build is `1.0.1`.
+Markers are case-insensitive; major wins if both appear. The baseline is the greater of the checked-in package version and the highest stable `vX.Y.Z` Git tag. With the initial `1.0.0` baseline, the first unmarked build is `1.0.1`. Commit the updated manifests, create a matching version tag, then push the commit and tag:
 
-After packaging succeeds, CI publishes the version tag on the source commit using `RELEASE_TOKEN`. It does not push a version-only commit or trigger another branch build. A retry of a tagged commit reuses that release version. The deploy job applies that exact version before rsync and the Docker rebuild. Release workflows are serialized with a concurrency group; older Gitea installations without concurrency support should use a single release runner slot. A conflicting tag push fails the build before deployment.
+```sh
+npm run build
+VERSION=$(node -p "require('./package.json').version")
+git add package.json package-lock.json
+git commit -m "Release v$VERSION"
+git tag "v$VERSION"
+git push origin HEAD --follow-tags
+```
+
+The tag workflow runs tests again before publishing. GitHub Actions needs the default `GITHUB_TOKEN` permissions to write releases and packages; no long-lived release token is required. Consumers can use the image from the package page or download the Windows agent ZIP from a GitHub Release.
+
+For a self-hosted deployment, `scripts/deploy.sh` syncs the checkout and restarts Docker Compose over SSH. Configure `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_SSH_KEY`, and `DEPLOY_KNOWN_HOSTS` in the environment. The remote host needs rsync and Docker Compose, and SSH host-key checking uses the supplied known-hosts entry.
 
 The application shows its version next to **Wake** in the header, loaded from `GET /version`. The Windows ZIP also contains a top-level `VERSION` file; `runtime/VERSION` identifies its bundled Node.js version. Local `npm run build` updates the manifests but does not create or push tags.
 

@@ -8,7 +8,7 @@ Includes Node.js 24. No separate Node.js installation is needed.
 3. Open Windows PowerShell as Administrator, change to the extracted wake-agent
    folder, and run:
 
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1 -WakeUrl "http://192.168.86.2:8091"
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1 -WakeUrl "https://wake.example.com"
 
 4. Paste the token when prompted. The installer starts the agent immediately.
 
