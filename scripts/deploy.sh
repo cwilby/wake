@@ -22,3 +22,23 @@ ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
     "${DEPLOY_USER}@192.168.86.2" \
     'cd docker/wake && docker compose up -d --build --force-recreate'
+
+# Deploy the uploaded artifact for this gitea action
+if [[ -f dist/wake-agent-windows-x64.zip ]]; then
+    scp -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+        -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+        ./dist/wake-agent-windows-x64.zip \
+        "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}:/C:/Applications/wake-agent-windows-x64.zip"
+
+    ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+        -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+        "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
+        'powershell.exe -NoProfile -NonInteractive -Command "& {
+            Stop-ScheduledTask -TaskName \"Wake Agent\" -ErrorAction SilentlyContinue;
+            Remove-Item -Recurse -Force \"C:\Applications\wake-agent\" -ErrorAction SilentlyContinue;
+            New-Item -ItemType Directory -Force \"C:\Applications\wake-agent\" | Out-Null;
+            Expand-Archive -Path \"C:\Applications\wake-agent-windows-x64.zip\" -DestinationPath \"C:\Applications\wake-agent\" -Force;
+            Remove-Item \"C:\Applications\wake-agent-windows-x64.zip\";
+            Start-ScheduledTask -TaskName \"Wake Agent\";
+        }"'
+fi

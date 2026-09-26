@@ -32,15 +32,6 @@ jobs:
       - name: Bump release version
         id: version
         run: npm run build
-      - name: Build portable Windows agent
-        run: bash scripts/package-windows-agent.sh
-      # v3 uses the artifact protocol supported by older Gitea installations.
-      - uses: https://github.com/actions/upload-artifact@v3
-        with:
-          name: wake-agent-windows-x64
-          path: dist/wake-agent-windows-x64.zip
-          if-no-files-found: error
-          retention-days: 30
       - name: Publish version tag
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
@@ -66,9 +57,22 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends rsync openssh-client
+          npm install
+      - name: Build portable Windows agent  
+        run: bash scripts/package-windows-agent.sh
+      - uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: wake-agent-windows-x64
+          path: dist/wake-agent-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
       - name: Sync application and restart containers
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          AGENT_WINDOWS_DEPLOY_HOST: ${{ secrets.AGENT_WINDOWS_DEPLOY_HOST }}
+          AGENT_WINDOWS_DEPLOY_USERNAME: ${{ secrets.AGENT_WINDOWS_DEPLOY_USERNAME }}
+          AGENT_WINDOWS_DEPLOY_SSH_KEY: ${{ secrets.AGENT_WINDOWS_DEPLOY_SSH_KEY }}
+          AGENT_WINDOWS_DEPLOY_SSH_PORT: ${{ secrets.AGENT_WINDOWS_DEPLOY_SSH_PORT }}
         run: bash scripts/deploy.sh
