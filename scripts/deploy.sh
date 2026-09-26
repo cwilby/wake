@@ -21,7 +21,7 @@ rsync -avz --exclude='.git/' --exclude='node_modules/' --exclude='dist/' --exclu
 # Rebuild from the synced source and recreate the Compose services with the new image.
 ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
-    "${DEPLOY_USER}@192.168.86.2" \
+    "${DEPLOY_USER}@192.168.86.6 \
     'cd docker/wake && docker compose up -d --build --force-recreate'
 
 if [[ ! -f dist/wake-agent-windows-x64.zip ]]; then
