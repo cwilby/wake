@@ -26,11 +26,13 @@ ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
 
 # Deploy the uploaded artifact for this gitea action
 if [[ -f dist/wake-agent-windows-x64.zip ]]; then
+    echo "Uploading Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
     scp -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
         -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
         ./dist/wake-agent-windows-x64.zip \
         "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}:/C:/Applications/wake-agent-windows-x64.zip"
 
+    echo "Deploying Wake Agent to ${AGENT_WINDOWS_DEPLOY_HOST}..."
     ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
         -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
         "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
