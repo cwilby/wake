@@ -7,6 +7,7 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
     let ui;
     const requests = [];
     const machine = { id: 1, name: 'Desktop', active: true, hosts: [], macs: [], shutdown_strategies: [] };
+    const notificationOption = { type: 'wake_requested', label: 'Start requests', description: 'When a start action is sent.', enabled: true };
     vm.runInNewContext(fs.readFileSync(new URL('../app/public/index.js', import.meta.url), 'utf8'), {
         Vue: {
             ref: value => ({ value }),
@@ -23,15 +24,21 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
             requests.push({ url: _url, ...options });
             return ({
             ok: true, status: options.method === 'POST' ? 201 : 200,
-            json: async () => _url === '/version' ? { version: '2.3.4' } : options.method === 'POST'
-                ? { id: 2, type: 'remote-agent', enrollment_token: 'test-enrollment-token' }
-                : [structuredClone(machine)]
+            json: async () => _url === '/version' ? { version: '2.3.4' }
+                : _url === '/notification-preferences' ? [notificationOption]
+                    : options.method === 'POST' ? { id: 2, type: 'remote-agent', enrollment_token: 'test-enrollment-token' }
+                        : [structuredClone(machine)]
         });
         }
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ui.appVersion.value, '2.3.4');
     assert.equal('notifications' in ui, false);
+    await ui.openNotificationSettings();
+    assert.equal(ui.notificationPreferences.value[0].enabled, true);
+    await ui.setNotificationPreference(ui.notificationPreferences.value[0], false);
+    assert.equal(ui.notificationPreferences.value[0].enabled, false);
+    assert.equal(requests.some(request => request.url.endsWith('/notification-preferences/wake_requested') && request.method === 'PUT'), true);
     ui.openEdit(ui.instances.value[0]);
     ui.editTab.value = 'shutdown';
     ui.strategyForm.value.type = 'remote-agent';

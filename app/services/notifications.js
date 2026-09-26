@@ -1,5 +1,6 @@
 import db from '../utils/db.js';
 import { sendPhoneNotification } from './pushover.js';
+import { isNotificationEnabled } from './notification-preferences.js';
 
 export function createNotificationService({ database, sendPhone = sendPhoneNotification, logger = console }) {
     return {
@@ -26,6 +27,7 @@ export function createNotificationService({ database, sendPhone = sendPhoneNotif
         },
         async forMachine(instanceId, event) {
             try {
+                if (!await isNotificationEnabled(database, event.type)) return null;
                 const machine = await database.find('instance', instanceId);
                 if (event.type === 'schedule_changed') {
                     await database.query('UPDATE notification SET expires_at = ? WHERE instance_id = ? AND type = ? AND expires_at > ?',

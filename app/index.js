@@ -1,5 +1,6 @@
 import express from 'express';
 import notifications from './services/notifications.js';
+import { registerNotificationPreferenceRoutes } from './services/notification-preferences.js';
 import { publicWakeSchedule, registerWakeScheduleRoutes } from './services/wake-schedules.js';
 import { publicSchedule, registerScheduleRoutes } from './services/shutdown-schedules.js';
 import { readFileSync } from 'node:fs';
@@ -94,6 +95,7 @@ async function getInstances() {
 
 app.use(morgan('dev'));
 app.use(express.json());
+registerNotificationPreferenceRoutes(app, db);
 registerScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachine(instanceId, {
     type: 'schedule_changed', title: schedule.enabled ? 'Shutdown schedule updated' : 'Shutdown schedule disabled',
     message: schedule.enabled ? `Daily shutdown at ${schedule.time} (${schedule.timezone}). Warning: ${schedule.warning_minutes ?? 10} minutes before.` : 'Daily shutdown is now disabled.',

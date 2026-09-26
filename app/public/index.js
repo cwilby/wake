@@ -11,6 +11,10 @@ createApp({
         const refreshCountdown = ref(10);
         const autoRefresh = ref(true);
         const dialogOpen = ref(false);
+        const notificationSettingsOpen = ref(false);
+        const notificationPreferences = ref([]);
+        const notificationPreferencesLoading = ref(false);
+        const notificationPreferenceSaving = ref('');
         const editingId = ref(null);
         const form = ref(emptyForm());
         const editTab = ref('machine');
@@ -76,6 +80,25 @@ createApp({
         function refreshNow() {
             refreshCountdown.value = 10;
             return loadInstances();
+        }
+
+        async function openNotificationSettings() {
+            notificationSettingsOpen.value = true;
+            notificationPreferencesLoading.value = true;
+            try { notificationPreferences.value = await request('/notification-preferences'); }
+            catch (error) { ElementPlus.ElMessage.error(error.message); }
+            finally { notificationPreferencesLoading.value = false; }
+        }
+
+        async function setNotificationPreference(option, enabled) {
+            notificationPreferenceSaving.value = option.type;
+            try {
+                await request(`/notification-preferences/${encodeURIComponent(option.type)}`, {
+                    method: 'PUT', body: JSON.stringify({ enabled })
+                });
+                option.enabled = enabled;
+            } catch (error) { ElementPlus.ElMessage.error(error.message); }
+            finally { notificationPreferenceSaving.value = ''; }
         }
 
         function setAutoRefresh(enabled) {
@@ -291,6 +314,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { overrideLoading, overrideShutdown, wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { notificationSettingsOpen, notificationPreferences, notificationPreferencesLoading, notificationPreferenceSaving, openNotificationSettings, setNotificationPreference, overrideLoading, overrideShutdown, wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

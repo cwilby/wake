@@ -107,7 +107,7 @@ The database migration creates `shutdown_schedule` and adds scheduled-command ex
 
 ## Notifications
 
-Wake sends machine alerts through Pushover. It does not show notification badges, toasts, or a notification history in the web dashboard. Phone alerts include start and shutdown requests/results, schedule changes, and upcoming shutdown warnings. Opening a shutdown warning takes you to that machine's schedule controls.
+Open **Phone notifications** in the header to choose which machine events Wake sends through Pushover. The settings apply globally to all machines and default to on: upcoming shutdown warnings, start requests, manual shutdown requests, shutdown failures, shutdown schedule changes, wake schedule changes, and scheduled start/shutdown results. Wake does not show notification badges, toasts, or a notification history in the dashboard. A shutdown warning opens the affected machine's schedule controls.
 
 In **Edit → Schedules → Shutdown**, set **Warn before shutdown (minutes)**. The default is **10**, the range is **0–120**, and **0** disables the advance warning. Both new and existing schedules default to 10 minutes after migration. Wake sends the warning to your phone through Pushover. The web dashboard and computer agent display no notifications. Reminders are claimed once per scheduled local date, including midnight and daylight-saving transitions. A missed warning is not replayed after downtime. Shutdown still happens on schedule if the phone notification cannot be delivered.
 

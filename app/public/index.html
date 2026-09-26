@@ -44,6 +44,9 @@
         .card-actions .el-button { width: 100%; height: 48px; margin: 0; border-radius: 10px; font-size: 14px; font-weight: 650; }
         .schedule-actions { display: flex; align-items: center; gap: 4px; margin-top: 8px; color: #6b7891; font-size: 12px; }
         .schedule-actions span { flex: 1; }
+        .notification-preference { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:16px 0; border-bottom:1px solid var(--line); }
+        .notification-preference strong { display:block; font-size:14px; }
+        .notification-preference p { margin:5px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
         .action-icon { width: 17px; height: 17px; margin-right: 8px; flex: none; }
         .empty { padding: 56px 20px; text-align: center; border: 1px dashed #cfd6e2; border-radius: 18px; background: #fff; color: var(--muted); }
         .empty-icon { font-size: 36px; margin-bottom: 8px; }
@@ -83,6 +86,7 @@
         <header class="topbar">
             <div class="brand"><span class="brand-mark">☀</span> Wake <span v-if="appVersion" class="app-version">v{{ appVersion }}</span></div>
             <div class="topbar-actions">
+                <el-button plain @click="openNotificationSettings">Phone notifications</el-button>
                 <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
             </div>
         </header>
@@ -128,6 +132,16 @@
             </div>
             <section v-if="!loading && !instances.length" class="empty"><div class="empty-icon">☀</div><strong>No machines yet</strong><p>Add an instance to begin waking devices.</p><el-button type="primary" @click="openCreate">Add your first instance</el-button></section>
         </main>
+        <el-dialog v-model="notificationSettingsOpen" title="Phone notifications" width="520px" :close-on-click-modal="false">
+            <p class="settings-note">Choose which events Wake sends through Pushover. These preferences apply to all machines.</p>
+            <div v-loading="notificationPreferencesLoading">
+                <div v-for="option in notificationPreferences" :key="option.type" class="notification-preference">
+                    <div><strong>{{ option.label }}</strong><p>{{ option.description }}</p></div>
+                    <el-switch :model-value="option.enabled" :disabled="notificationPreferenceSaving === option.type" :aria-label="option.label" @change="setNotificationPreference(option, $event)"></el-switch>
+                </div>
+            </div>
+            <template #footer><el-button @click="notificationSettingsOpen = false">Close</el-button></template>
+        </el-dialog>
         <el-dialog class="machine-dialog" v-model="dialogOpen" :title="editingId ? 'Edit machine' : 'Add instance'" width="600px" :close-on-click-modal="false">
             <el-tabs v-model="editTab">
                 <el-tab-pane label="Machine" name="machine">

@@ -9,7 +9,7 @@ test('machine notifications are recorded and sent through Pushover', async () =>
         database: {
             create: async (_table, row) => { const saved = { ...row, id: history.length + 1 }; history.push(saved); return saved; },
             find: async () => ({ name: 'Machine' }),
-            query: async () => ({ results: history })
+            query: async sql => sql.startsWith('SELECT enabled FROM notification_preference') ? { results: [] } : { results: history }
         },
         sendPhone: async notice => phone.push(notice)
     });
