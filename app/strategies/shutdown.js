@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import db from '../utils/db.js';
 import agentConnections from '../utils/agent-connections.js';
 import { shutdownOverSsh } from '../utils/shutdown.js';
+import { decryptPrivateKey } from '../utils/ssh-key-vault.js';
 
 export class SshShutdownStrategy {
     constructor(configuration) {
@@ -48,7 +49,10 @@ export class RemoteAgentShutdownStrategy {
 }
 
 export function createShutdownStrategy(configuration) {
-    if (configuration.type === 'ssh') return new SshShutdownStrategy(configuration);
+    if (configuration.type === 'ssh') {
+        if (!configuration.private_key_encrypted) throw new Error('Stored SSH key is not encrypted. Restart Wake to run its SSH key migration before using this strategy.');
+        return new SshShutdownStrategy({ ...configuration, private_key: decryptPrivateKey(configuration.private_key) });
+    }
     if (configuration.type === 'remote-agent') return new RemoteAgentShutdownStrategy(configuration);
     throw new Error(`Unsupported shutdown strategy: ${configuration.type}`);
 }

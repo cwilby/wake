@@ -7,11 +7,13 @@ import { createShutdownScheduler, createWakeScheduler } from './app/services/shu
 import { dispatchScheduledShutdown } from './app/services/scheduled-shutdown.js';
 import { dispatchScheduledWake } from './app/services/wake-schedules.js';
 import writeLogo from './app/utils/writeLogo.js';
+import { encryptLegacySshKeys } from './app/utils/ssh-key-vault.js';
 
 (async () => {
     writeLogo();
     
     await database.runMigrations();
+    await encryptLegacySshKeys(db);
     createShutdownScheduler({
         db, dispatch: dispatchScheduledShutdown,
         warn: (instanceId, { minutes, dueAt, time, timezone }) => notifications.forMachine(instanceId, {

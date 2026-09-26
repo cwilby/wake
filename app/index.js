@@ -14,6 +14,7 @@ import ping from './utils/ping.js';
 import db from './utils/db.js';
 import { defaultShutdownCommands, normalizeSshHost } from './utils/shutdown.js';
 import { createShutdownStrategy } from './strategies/shutdown.js';
+import { encryptPrivateKey } from './utils/ssh-key-vault.js';
 
 const app = express();
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -161,12 +162,21 @@ app.post('/instances/:instance/shutdown-strategies', async (req, res) => {
     if (validationError) return res.status(400).json({ error: validationError });
 
     const { type, platform, host, private_key: privateKey, shutdown_command: shutdownCommand } = req.body;
+    let encryptedPrivateKey = null;
+    if (type === 'ssh') {
+        try {
+            encryptedPrivateKey = encryptPrivateKey(privateKey);
+        } catch (error) {
+            return res.status(503).json({ error: error.message });
+        }
+    }
     const row = {
         instance_id: Number(req.params.instance),
         type,
         platform: type === 'ssh' ? platform : null,
         host: type === 'ssh' ? normalizeSshHost(host) : null,
-        private_key: type === 'ssh' ? privateKey.trim() : null,
+        private_key: encryptedPrivateKey,
+        private_key_encrypted: type === 'ssh',
         shutdown_command: type === 'ssh' ? (shutdownCommand?.trim() || defaultShutdownCommands[platform]) : null
     };
     let enrollmentToken;
