@@ -14,6 +14,10 @@ createApp({
         const editingId = ref(null);
         const form = ref(emptyForm());
         const editTab = ref('machine');
+        const scheduleSaving = ref(false);
+        const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const timezones = [...new Set([localTimezone, 'UTC', ...Intl.supportedValuesOf('timeZone')])];
+        const scheduleForm = ref({ enabled: false, time: '00:00', timezone: localTimezone });
         const shutdownInstance = computed(() => instances.value.find(instance => instance.id === editingId.value));
         const strategySaving = ref(false);
         const enrollmentToken = ref('');
@@ -80,6 +84,7 @@ createApp({
         function openEdit(instance) {
             resetEditor();
             editingId.value = instance.id;
+            if (instance.shutdown_schedule) scheduleForm.value = { ...instance.shutdown_schedule };
             form.value = {
                 name: instance.name,
                 active: instance.active,
@@ -151,8 +156,24 @@ createApp({
 
         function resetEditor() {
             editTab.value = 'machine';
+            scheduleForm.value = { enabled: false, time: '00:00', timezone: localTimezone };
             strategyForm.value = emptyStrategyForm();
             enrollmentToken.value = '';
+        }
+
+        async function saveShutdownSchedule() {
+            scheduleSaving.value = true;
+            try {
+                await request(`/instances/${editingId.value}/shutdown-schedule`, {
+                    method: 'PUT', body: JSON.stringify(scheduleForm.value)
+                });
+                await loadInstances();
+                ElementPlus.ElMessage.success(scheduleForm.value.enabled ? 'Daily shutdown scheduled.' : 'Shutdown schedule disabled.');
+            } catch (error) {
+                ElementPlus.ElMessage.error(error.message);
+            } finally {
+                scheduleSaving.value = false;
+            }
         }
 
         async function addShutdownStrategy() {
@@ -226,6 +247,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

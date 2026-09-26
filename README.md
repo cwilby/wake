@@ -94,3 +94,13 @@ Markers are case-insensitive; major wins if both appear. For a multi-commit push
 After packaging succeeds, CI publishes the version tag on the source commit using `RELEASE_TOKEN`. It does not push a version-only commit or trigger another branch build. A retry of a tagged commit reuses that release version. The deploy job applies that exact version before rsync and the Docker rebuild. Release workflows are serialized with a concurrency group; older Gitea installations without concurrency support should use a single release runner slot. A conflicting tag push fails the build before deployment.
 
 The application shows its version next to **Wake** in the header, loaded from `GET /version`. The Windows ZIP also contains a top-level `VERSION` file; `runtime/VERSION` identifies its bundled Node.js version. Local `npm run build` updates the manifests but does not create or push tags.
+
+## Daily shutdown schedules
+
+Open a machine's **Edit → Schedule** tab, enable **Daily shutdown**, choose a time and timezone, and select **Save schedule**. The default is midnight (`00:00`) in your browser's timezone. Configure an SSH or remote-agent shutdown strategy first. Turn off Daily shutdown and save to pause the timer.
+
+Wake checks saved schedules every 15 seconds on the server; the dashboard does not need to remain open. A machine runs at most once per local calendar day. Its configured timezone follows daylight-saving changes: a repeated time runs once, and a time skipped by the spring-forward transition is skipped that day. Times missed while Wake is stopped are not replayed. Last run time and dispatch result appear in the Schedule tab; a sent request is not confirmation that the operating system powered off.
+
+Offline remote agents are skipped. Scheduled agent commands are sent only over an existing connection, expire after 60 seconds, and are never replayed on reconnect. SSH attempts fail normally if a machine is unreachable. Manual shutdown requests retain their existing durable queue behavior. Failed scheduled attempts are recorded and are not retried that day; send a manual request if needed. Claims are persisted before dispatch to prevent duplicate runs after a restart; a crash between claiming and sending can therefore skip that day's shutdown.
+
+The database migration creates `shutdown_schedule` and adds scheduled-command expiry to `shutdown_strategy` automatically at startup. Schedule configuration is available through `PUT /instances/:instance/shutdown-schedule` with `{ "enabled": true, "time": "00:00", "timezone": "America/Los_Angeles" }`, and is returned as `shutdown_schedule` by `GET /instances`.

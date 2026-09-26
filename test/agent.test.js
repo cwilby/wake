@@ -7,6 +7,7 @@ import { readCommands, runAgent } from '../agent/index.js';
 import app from '../app/index.js';
 import db from '../app/utils/db.js';
 import connections from '../app/utils/agent-connections.js';
+import { RemoteAgentShutdownStrategy } from '../app/strategies/shutdown.js';
 
 const logger = { log() {}, error() {} };
 const token = 'test-agent-token';
@@ -36,7 +37,7 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
     let streamRequests = 0;
     let acknowledgements = 0;
     const original = { query: db.query, find: db.find, update: db.update };
-    db.find = async () => row ? { ...row } : null;
+    db.find = async (table, id) => table === 'instance' ? (Number(id) === 1 ? { id: 1 } : null) : row ? { ...row } : null;
     db.update = async (_table, _id, values) => { if (row) Object.assign(row, values); };
     db.query = async (sql, args) => {
         if (sql.startsWith('SELECT') && sql.includes('agent_token_hash')) {
@@ -44,15 +45,33 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
             return { results: row && args[1] === row.agent_token_hash ? [{ ...row }] : [] };
         }
         if (sql.startsWith('SELECT')) return { results: row ? [{ ...row }] : [] };
+        if (sql.startsWith('INSERT INTO shutdown_schedule')) return { results: { affectedRows: 1 } };
+        if (sql.includes('AND shutdown_expires_at <= ?')) {
+            if (row?.shutdown_expires_at != null && row.shutdown_expires_at <= args[1]) {
+                row.shutdown_request_id = null;
+                row.shutdown_requested_at = null;
+                row.shutdown_expires_at = null;
+            }
+            return { results: { affectedRows: 1 } };
+        }
+        if (sql.includes('AND shutdown_expires_at IS NOT NULL')) {
+            if (row?.shutdown_request_id === args[1] && row.shutdown_expires_at != null) {
+                row.shutdown_request_id = null;
+                row.shutdown_expires_at = null;
+            }
+            return { results: { affectedRows: 1 } };
+        }
         if (sql.includes('COALESCE')) {
-            row.shutdown_request_id ??= args[0];
-            row.shutdown_requested_at ??= args[1];
+            if (row.shutdown_request_id == null) row.shutdown_expires_at = args[0];
+            row.shutdown_request_id ??= args[1];
+            row.shutdown_requested_at ??= args[2];
             return { results: { affectedRows: 1 } };
         }
         if (sql.includes('shutdown_request_id = NULL')) {
-            const matched = row && row.shutdown_request_id === args[2];
+            const matched = row && row.shutdown_request_id === args[2] && (row.shutdown_expires_at == null || row.shutdown_expires_at > args[3]);
             if (matched) {
                 row.shutdown_request_id = null;
+                row.shutdown_expires_at = null;
                 acknowledgements++;
             }
             return { results: { affectedRows: matched ? 1 : 0 } };
@@ -180,6 +199,57 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
             stop.abort();
             await running;
         }
+    });
+
+    await t.test('schedule API validates input, machine existence, and shutdown setup', async () => {
+        reset();
+        async function save(body, instance = 1) {
+            const response = await fetch(`${wakeUrl}/instances/${instance}/shutdown-schedule`, {
+                method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+            });
+            await response.text();
+            return response.status;
+        }
+        const valid = { enabled: true, time: '00:00', timezone: 'America/Los_Angeles' };
+        assert.equal(await save({ ...valid, timezone: 'Not/AZone' }), 400);
+        assert.equal(await save(valid, 99), 404);
+        assert.equal(await save(valid), 204);
+        row = null;
+        assert.equal(await save(valid), 409);
+        assert.equal(await save({ ...valid, enabled: false }), 204);
+    });
+
+    await t.test('scheduled requests skip offline agents without queueing', async () => {
+        reset();
+        const result = await new RemoteAgentShutdownStrategy(row).execute({ scheduled: true });
+        assert.equal(result.status, 'skipped');
+        assert.equal(row.shutdown_request_id, null);
+    });
+
+    await t.test('scheduled commands are delivered live but never replayed after reconnect', async () => {
+        reset();
+        const first = await fetch(`${wakeUrl}/agent/events`, { headers });
+        const result = await new RemoteAgentShutdownStrategy(row).execute({ scheduled: true });
+        assert.equal(result.status, 'queued');
+        assert.ok(row.shutdown_expires_at > Date.now());
+        connections.disconnect(1);
+        assert.match(await first.text(), /"shutdown":true/);
+        const second = await fetch(`${wakeUrl}/agent/events`, { headers });
+        await until(() => row.shutdown_request_id === null);
+        connections.disconnect(1);
+        assert.doesNotMatch(await second.text(), /"shutdown":true/);
+    });
+
+    await t.test('expired scheduled acknowledgements are rejected and manual requests replace them', async () => {
+        reset();
+        row.shutdown_request_id = 'expired';
+        row.shutdown_expires_at = Date.now() - 1;
+        const response = await fetch(`${wakeUrl}/agent/commands/expired/complete`, { method: 'POST', headers });
+        assert.equal(response.status, 409);
+        await response.text();
+        const id = await queue();
+        assert.notEqual(id, 'expired');
+        assert.equal(row.shutdown_expires_at, null);
     });
 
     await t.test('stale acknowledgement cannot clear a newer request', async () => {

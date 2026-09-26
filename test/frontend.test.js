@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 test('remote-agent enrollment retains token through refresh and exposes its endpoint to the template', async () => {
     let ui;
+    const requests = [];
     const machine = { id: 1, name: 'Desktop', active: true, hosts: [], macs: [], shutdown_strategies: [] };
     vm.runInNewContext(fs.readFileSync(new URL('../app/public/index.js', import.meta.url), 'utf8'), {
         Vue: {
@@ -15,12 +16,15 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
         },
         ElementPlus: { ElMessage: { success() {}, error(message) { throw new Error(message); } } },
         window: { location: { origin: 'http://wake.test:8091' }, setInterval() {}, clearInterval() {} },
-        fetch: async (_url, options = {}) => ({
+        fetch: async (_url, options = {}) => {
+            requests.push({ url: _url, ...options });
+            return ({
             ok: true, status: options.method === 'POST' ? 201 : 200,
             json: async () => _url === '/version' ? { version: '2.3.4' } : options.method === 'POST'
                 ? { id: 2, type: 'remote-agent', enrollment_token: 'test-enrollment-token' }
                 : [structuredClone(machine)]
-        })
+        });
+        }
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(ui.appVersion.value, '2.3.4');
@@ -36,6 +40,15 @@ test('remote-agent enrollment retains token through refresh and exposes its endp
     const template = fs.readFileSync(new URL('../app/public/index.html', import.meta.url), 'utf8');
     assert.match(template, /\{\{ agentEndpoint \}\}/);
     assert.doesNotMatch(template, /\{\{\s*location\./);
+    ui.editTab.value = 'schedule';
+    ui.scheduleForm.value = { enabled: true, time: '00:00', timezone: 'America/Los_Angeles' };
+    await ui.saveShutdownSchedule();
+    const saved = requests.find(request => request.url.endsWith('/shutdown-schedule'));
+    assert.equal(saved.method, 'PUT');
+    assert.deepEqual(JSON.parse(saved.body), { enabled: true, time: '00:00', timezone: 'America/Los_Angeles' });
+    assert.equal(ui.scheduleForm.value.enabled, true, 'refresh must not reset the edited schedule');
     ui.openCreate();
+    assert.equal(ui.scheduleForm.value.enabled, false);
+    assert.equal(ui.scheduleForm.value.time, '00:00');
     assert.equal(ui.enrollmentToken.value, '');
 });

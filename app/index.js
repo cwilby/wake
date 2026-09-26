@@ -1,4 +1,5 @@
 import express from 'express';
+import { publicSchedule, registerScheduleRoutes } from './services/shutdown-schedules.js';
 import { readFileSync } from 'node:fs';
 import agentConnections from './utils/agent-connections.js';
 import morgan from 'morgan';
@@ -59,17 +60,19 @@ async function getInstances() {
     const { results: instances } = await db.query('SELECT * FROM instance ORDER BY name');
     if (!instances.length) return [];
     const ids = instances.map(instance => instance.id);
-    const [{ results: hosts }, { results: macs }, { results: strategies }] = await Promise.all([
+    const [{ results: hosts }, { results: macs }, { results: strategies }, { results: schedules }] = await Promise.all([
         db.query('SELECT instance_id, address FROM instance_host WHERE instance_id IN (?) ORDER BY address', [ids]),
         db.query('SELECT instance_id, address FROM instance_mac WHERE instance_id IN (?) ORDER BY address', [ids]),
-        db.query('SELECT * FROM shutdown_strategy WHERE instance_id IN (?) ORDER BY id', [ids])
+        db.query('SELECT * FROM shutdown_strategy WHERE instance_id IN (?) ORDER BY id', [ids]),
+        db.query('SELECT * FROM shutdown_schedule WHERE instance_id IN (?)', [ids])
     ]);
     const byInstance = new Map(instances.map(instance => [instance.id, {
-        ...instance, active: toBoolean(instance.active), hosts: [], macs: [], shutdown_strategies: []
+        ...instance, active: toBoolean(instance.active), hosts: [], macs: [], shutdown_strategies: [], shutdown_schedule: null
     }]));
     hosts.forEach(host => byInstance.get(host.instance_id).hosts.push({ address: host.address }));
     macs.forEach(mac => byInstance.get(mac.instance_id).macs.push({ address: mac.address }));
     strategies.forEach(strategy => byInstance.get(strategy.instance_id).shutdown_strategies.push(publicStrategy(strategy)));
+    schedules.forEach(schedule => { byInstance.get(schedule.instance_id).shutdown_schedule = publicSchedule(schedule); });
     const hydratedInstances = [...byInstance.values()];
 
     await Promise.all(hydratedInstances.map(async instance => {
@@ -87,6 +90,7 @@ async function getInstances() {
 
 app.use(morgan('dev'));
 app.use(express.json());
+registerScheduleRoutes(app, db);
 app.use(express.static(publicDirectory));
 
 app.get('/version', (_req, res) => res.set('Cache-Control', 'no-store').json({ version }));
@@ -194,7 +198,15 @@ app.get('/agent/events', async (req, res) => {
         // Subscribe before reading the queue so a concurrent shutdown cannot be missed.
         const current = await db.find('shutdown_strategy', strategy.id);
         if (!current) return agentConnections.disconnect(strategy.id);
-        agentConnections.send(strategy.id, current.shutdown_request_id);
+        if (current.shutdown_expires_at != null) {
+            // A scheduled shutdown is never replayed on reconnect, even within its expiry window.
+            await db.query(
+                'UPDATE shutdown_strategy SET shutdown_request_id = NULL, shutdown_requested_at = NULL, shutdown_expires_at = NULL WHERE id = ? AND shutdown_request_id = ? AND shutdown_expires_at IS NOT NULL',
+                [strategy.id, current.shutdown_request_id]
+            );
+        } else {
+            agentConnections.send(strategy.id, current.shutdown_request_id);
+        }
     } catch (error) {
         res.destroy();
         console.error('Unable to read queued agent command:', error.message);
@@ -206,8 +218,8 @@ app.post('/agent/commands/:request/complete', async (req, res) => {
     if (!strategy) return res.sendStatus(401);
     // Only one agent may claim this command; stale acknowledgements cannot clear a newer one.
     const { results } = await db.query(
-        'UPDATE shutdown_strategy SET shutdown_request_id = NULL, shutdown_requested_at = NULL, agent_last_seen_at = ? WHERE id = ? AND shutdown_request_id = ?',
-        [new Date(), strategy.id, req.params.request]
+        'UPDATE shutdown_strategy SET shutdown_request_id = NULL, shutdown_requested_at = NULL, shutdown_expires_at = NULL, agent_last_seen_at = ? WHERE id = ? AND shutdown_request_id = ? AND (shutdown_expires_at IS NULL OR shutdown_expires_at > ?)',
+        [new Date(), strategy.id, req.params.request, Date.now()]
     );
     if (!results.affectedRows) return res.sendStatus(409);
     res.sendStatus(204);
