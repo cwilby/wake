@@ -16,7 +16,7 @@ import writeLogo from './app/utils/writeLogo.js';
         db, dispatch: dispatchScheduledShutdown,
         warn: (instanceId, { minutes, dueAt, time, timezone }) => notifications.forMachine(instanceId, {
             type: 'shutdown_warning', title: 'Scheduled shutdown soon',
-            message: `Scheduled to shut down in ${minutes} minute${minutes === 1 ? '' : 's'}, at ${time} (${timezone}). Save your work.`,
+            message: `Scheduled to shut down in ${minutes} minute${minutes === 1 ? '' : 's'}, at ${time} (${timezone}).`,
             expiresAt: dueAt.getTime(), phone: true
         }),
         onResult: (instanceId, result) => notifications.forMachine(instanceId, {
