@@ -86,8 +86,13 @@
         <header class="topbar">
             <div class="brand"><span class="brand-mark">☀</span> Wake <span v-if="appVersion" class="app-version">v{{ appVersion }}</span></div>
             <div class="topbar-actions">
-                <el-button plain @click="openNotificationSettings">Phone notifications</el-button>
-                <el-button type="primary" round @click="openCreate">+ Add instance</el-button>
+                <el-dropdown trigger="click">
+                    <el-button type="primary" round aria-label="Open Wake menu">Actions <span aria-hidden="true">⌄</span></el-button>
+                    <template #dropdown><el-dropdown-menu>
+                        <el-dropdown-item @click="openCreate">+ Add instance</el-dropdown-item>
+                        <el-dropdown-item divided @click="openNotificationSettings">Phone notifications</el-dropdown-item>
+                    </el-dropdown-menu></template>
+                </el-dropdown>
             </div>
         </header>
         <main class="page">
