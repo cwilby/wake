@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import wake from './utils/wake.js';
 import ping from './utils/ping.js';
 import db from './utils/db.js';
-import { defaultShutdownCommands } from './utils/shutdown.js';
+import { defaultShutdownCommands, normalizeSshHost } from './utils/shutdown.js';
 import { createShutdownStrategy } from './strategies/shutdown.js';
 
 const app = express();
@@ -165,7 +165,7 @@ app.post('/instances/:instance/shutdown-strategies', async (req, res) => {
         instance_id: Number(req.params.instance),
         type,
         platform: type === 'ssh' ? platform : null,
-        host: type === 'ssh' ? host.trim() : null,
+        host: type === 'ssh' ? normalizeSshHost(host) : null,
         private_key: type === 'ssh' ? privateKey.trim() : null,
         shutdown_command: type === 'ssh' ? (shutdownCommand?.trim() || defaultShutdownCommands[platform]) : null
     };
@@ -194,7 +194,7 @@ app.post('/instances/:instance/shutdown', async (req, res) => {
         await notifications.forMachine(req.params.instance, { type: 'shutdown_requested', title: 'Shutdown requested', message: 'Shutdown request sent. This is not confirmation that the computer has powered off.' });
     } catch (error) {
         await notifications.forMachine(req.params.instance, { type: 'shutdown_failed', title: 'Shutdown request failed', message: 'Unable to send one or more shutdown requests. Check the shutdown configuration.' });
-        throw error;
+        return res.status(502).json({ error: error.message });
     }
     res.status(202).json({ results });
 });
