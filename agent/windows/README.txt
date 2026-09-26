@@ -28,12 +28,3 @@ new strategy if you no longer have it.
 To uninstall, run Uninstall.ps1 from an Administrator PowerShell. It removes
 the task; then delete C:\ProgramData\WakeAgent to remove the files and token.
 Removing the strategy from Wake also revokes the token.
-
-Shutdown warnings
------------------
-Set "Warn before shutdown (minutes)" in Wake's Edit > Schedules > Shutdown (default 10).
-The updated agent displays a desktop message in active logged-in Windows
-sessions. It uses Notify.ps1 and works when the scheduled task runs as SYSTEM.
-The message dismisses after two minutes. It does not cancel or delay shutdown.
-The agent must be connected at the warning time; warnings are not replayed on
-reconnect. With no logged-in user, the event is only visible in Wake's history.

@@ -140,24 +140,18 @@ test('persistent agent lifecycle and authenticated command delivery', async t =>
         }
     });
 
-    await t.test('agent handles live notices once, ignores expired notices, and keeps accepting shutdowns after display failure', async () => {
+    await t.test('agent ignores legacy notification events and still accepts shutdowns', async () => {
         reset();
         const stop = new AbortController();
-        let notices = 0;
         let executions = 0;
         const running = runAgent({ wakeUrl, token, logger, signal: stop.signal,
-            notify: async () => { notices++; throw new Error('Desktop unavailable'); },
             executeCommand: async () => { executions++; } });
         try {
             await until(() => connections.has(1));
-            const notice = { id: 100, title: 'Shutdown soon', message: 'Save your work.', expires_at: Date.now() + 600_000 };
-            connections.notifyInstance(1, notice);
-            connections.notifyInstance(1, notice);
-            connections.notifyInstance(1, { ...notice, id: 101, expires_at: Date.now() - 1 });
-            await until(() => notices === 1);
+            connections.clients.get(1).res.write(`data: ${JSON.stringify({ type: 'notification', id: 100 })}\n\n`);
             await queue();
             await until(() => executions === 1);
-            assert.equal(notices, 1);
+            assert.equal(executions, 1);
         } finally { stop.abort(); await running; }
     });
 

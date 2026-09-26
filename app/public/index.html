@@ -48,6 +48,8 @@
         .context-note { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; color: var(--muted); }
         .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
         .card-actions .el-button { width: 100%; height: 48px; margin: 0; border-radius: 10px; font-size: 14px; font-weight: 650; }
+        .schedule-actions { display: flex; align-items: center; gap: 4px; margin-top: 8px; color: #6b7891; font-size: 12px; }
+        .schedule-actions span { flex: 1; }
         .action-icon { width: 17px; height: 17px; margin-right: 8px; flex: none; }
         .empty { padding: 56px 20px; text-align: center; border: 1px dashed #cfd6e2; border-radius: 18px; background: #fff; color: var(--muted); }
         .empty-icon { font-size: 36px; margin-bottom: 8px; }
@@ -79,7 +81,7 @@
         .refresh-button.is-loading .refresh-dial { animation-duration: .75s; }
         .refresh-button.is-paused:not(.is-loading) .refresh-dial { animation-play-state: paused; }
         @keyframes refresh-spin { to { transform: rotate(360deg); } }
-        @media (max-width: 580px) { .topbar { min-height:64px; } .page { padding-top: 26px; } .intro { align-items: stretch; flex-direction: column; } .refresh-controls { width: 100%; justify-content: space-between; } .instance-grid { grid-template-columns: 1fr; } .card-actions .el-button { flex: 1; } .el-dialog.machine-dialog { width: calc(100% - 24px); } }
+        @media (max-width: 580px) { .topbar { min-height:64px; } .page { padding-top: 26px; } .intro { align-items: stretch; flex-direction: column; } .refresh-controls { width: 100%; justify-content: space-between; } .instance-grid { grid-template-columns: 1fr; } .card-actions .el-button { flex: 1; } .schedule-actions { flex-wrap: wrap; } .schedule-actions span { flex-basis: 100%; } .el-dialog.machine-dialog { width: calc(100% - 24px); } }
     </style>
 </head>
 <body>
@@ -124,6 +126,11 @@
                         <el-button type="primary" :disabled="!instance.active || !instance.macs.length" :loading="wakingId === instance.id" :aria-label="'Start ' + instance.name" @click="wakeInstance(instance)"><svg v-if="wakingId !== instance.id" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v9M6.3 5.8a8 8 0 1 0 11.4 0"/></svg>Start</el-button>
                         <el-button plain :disabled="!instance.shutdown_strategies.length" :loading="shuttingDownId === instance.id" :aria-label="'Shutdown ' + instance.name" @click="shutdownInstanceNow(instance)"><svg v-if="shuttingDownId !== instance.id" class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v9M6.3 5.8a8 8 0 1 0 11.4 0"/></svg>Shutdown</el-button>
                     </div>
+                    <div v-if="instance.shutdown_schedule && instance.shutdown_schedule.enabled && instance.shutdown_schedule.next_run" class="schedule-actions">
+                        <span>Next shutdown · {{ new Date(instance.shutdown_schedule.next_run.due_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+                        <el-button text size="small" :loading="overrideLoading === instance.id + ':skip'" @click="overrideShutdown(instance, 'skip')">Skip</el-button>
+                        <el-button text size="small" :loading="overrideLoading === instance.id + ':delay'" @click="overrideShutdown(instance, 'delay')">Delay 1 hour</el-button>
+                    </div>
                 </el-card></article>
             </div>
             <section v-if="!loading && !instances.length" class="empty"><div class="empty-icon">☀</div><strong>No machines yet</strong><p>Add an instance to begin waking devices.</p><el-button type="primary" @click="openCreate">Add your first instance</el-button></section>
@@ -166,7 +173,12 @@
                             <el-select v-model="scheduleForm.timezone" filterable aria-label="Schedule timezone"><el-option v-for="zone in timezones" :key="zone" :label="zone.replaceAll('_', ' ')" :value="zone"></el-option></el-select>
                         </el-form-item>
                         <el-form-item label="Warn before shutdown (minutes)"><el-input-number v-model="scheduleForm.warning_minutes" :min="0" :max="120" :step="1" step-strictly></el-input-number></el-form-item>
-                        <p class="settings-note">Warnings appear in Wake and on connected Windows agents. Set 0 to disable warnings. Windows agents need the updated download.</p>
+                        <p class="settings-note">Warnings appear in Wake and are sent to your phone with Pushover. Set 0 to disable warnings. Use the dashboard to skip or delay the next shutdown.</p>
+                        <div v-if="shutdownInstance && shutdownInstance.shutdown_schedule && shutdownInstance.shutdown_schedule.next_run" class="schedule-actions">
+                            <span>Next shutdown · {{ new Date(shutdownInstance.shutdown_schedule.next_run.due_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+                            <el-button text size="small" :loading="overrideLoading === shutdownInstance.id + ':skip'" @click="overrideShutdown(shutdownInstance, 'skip')">Skip</el-button>
+                            <el-button text size="small" :loading="overrideLoading === shutdownInstance.id + ':delay'" @click="overrideShutdown(shutdownInstance, 'delay')">Delay 1 hour</el-button>
+                        </div>
                         <p class="settings-note">Runs even when this page is closed. Offline agents are skipped, and missed times are not replayed. Add a shutdown strategy in Shutdown settings first.</p>
                         <p v-if="shutdownInstance && shutdownInstance.shutdown_schedule && shutdownInstance.shutdown_schedule.last_run_at" class="settings-note">Last run: {{ new Date(shutdownInstance.shutdown_schedule.last_run_at).toLocaleString() }}<br>{{ shutdownInstance.shutdown_schedule.last_result }}</p>
                     </el-form>

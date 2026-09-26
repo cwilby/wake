@@ -63,6 +63,7 @@ createApp({
         const form = ref(emptyForm());
         const editTab = ref('machine');
         const scheduleSaving = ref(false);
+        const overrideLoading = ref('');
         const wakeScheduleSaving = ref(false);
         const scheduleKind = ref('wake');
         const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -96,6 +97,7 @@ createApp({
         }
 
         let foregroundLoads = 0;
+        let deepLinkHandled = false;
 
         async function loadInstances({ background = false } = {}) {
             if (!background) {
@@ -104,6 +106,11 @@ createApp({
             }
             try {
                 instances.value = await request('/instances');
+                if (!deepLinkHandled && window.location.search) {
+                    const machineId = new URLSearchParams(window.location.search).get('machine');
+                    const machine = instances.value.find(item => String(item.id) === machineId);
+                    if (machine) { deepLinkHandled = true; openEdit(machine); editTab.value = 'schedule'; scheduleKind.value = 'shutdown'; }
+                }
             } catch (error) {
                 ElementPlus.ElMessage.error(error.message);
             } finally {
@@ -245,6 +252,22 @@ createApp({
             }
         }
 
+        async function overrideShutdown(instance, action) {
+            const next = instance.shutdown_schedule?.next_run;
+            if (!next) return;
+            overrideLoading.value = `${instance.id}:${action}`;
+            try {
+                await request(`/instances/${instance.id}/shutdown-schedule/override`, {
+                    method: 'POST', body: JSON.stringify({ action, expected_due_at: next.due_at })
+                });
+                await loadInstances();
+                ElementPlus.ElMessage.success(action === 'skip' ? 'Next shutdown skipped.' : 'Shutdown delayed by one hour.');
+            } catch (error) {
+                ElementPlus.ElMessage.error(error.message);
+                await loadInstances();
+            } finally { overrideLoading.value = ''; }
+        }
+
         async function addShutdownStrategy() {
             const data = { ...strategyForm.value };
             if (data.type === 'ssh' && (!data.host.trim() || !data.private_key.trim())) {
@@ -316,6 +339,6 @@ createApp({
             }
         }, 1_000);
         onUnmounted(() => window.clearInterval(refreshTimer));
-        return { wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, notifications, notificationsOpen, notificationsConnected, unreadNotifications, markNotificationsRead, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
+        return { overrideLoading, overrideShutdown, wakeScheduleSaving, wakeScheduleForm, scheduleKind, saveWakeSchedule, notifications, notificationsOpen, notificationsConnected, unreadNotifications, markNotificationsRead, scheduleSaving, scheduleForm, timezones, saveShutdownSchedule, appVersion, instances, loading, saving, wakingId, shuttingDownId, refreshCountdown, autoRefresh, dialogOpen, editingId, form, editTab, shutdownInstance, strategySaving, enrollmentToken, agentEndpoint, strategyForm, loadInstances, refreshNow, setAutoRefresh, openCreate, openEdit, addAddress, removeAddress, saveInstance, deleteInstance, wakeInstance, addShutdownStrategy, removeShutdownStrategy, shutdownInstanceNow, stateLabel, statusDetail };
     }
 }).use(ElementPlus).mount('#app');

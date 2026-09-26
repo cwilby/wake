@@ -99,6 +99,10 @@ registerScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachi
     type: 'schedule_changed', title: schedule.enabled ? 'Shutdown schedule updated' : 'Shutdown schedule disabled',
     message: schedule.enabled ? `Daily shutdown at ${schedule.time} (${schedule.timezone}). Warning: ${schedule.warning_minutes ?? 10} minutes before.` : 'Daily shutdown is now disabled.',
     expiresAt: Date.now() + 120_000
+}), (instanceId, change) => notifications.forMachine(instanceId, {
+    type: 'schedule_changed', title: change.action === 'skip' ? 'Next shutdown skipped' : 'Shutdown delayed',
+    message: change.action === 'skip' ? 'The next scheduled shutdown was skipped.' : `Shutdown delayed by one hour, until ${new Date(change.due_at).toLocaleString()}.`,
+    expiresAt: Date.now() + 120_000
 }));
 registerWakeScheduleRoutes(app, db, (instanceId, schedule) => notifications.forMachine(instanceId, {
     type: 'wake_schedule_changed', title: schedule.enabled ? 'Wake schedule updated' : 'Wake schedule disabled',
