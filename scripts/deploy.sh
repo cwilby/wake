@@ -37,11 +37,7 @@ if [[ -f dist/wake-agent-windows-x64.zip ]]; then
         -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
         "${AGENT_WINDOWS_DEPLOY_USERNAME}@${AGENT_WINDOWS_DEPLOY_HOST}" \
         'powershell.exe -NoProfile -NonInteractive -Command "& {
-            Stop-ScheduledTask -TaskName \"Wake Agent\" -ErrorAction SilentlyContinue;
-            Remove-Item -Recurse -Force \"C:\Applications\wake-agent\" -ErrorAction SilentlyContinue;
-            New-Item -ItemType Directory -Force \"C:\Applications\wake-agent\" | Out-Null;
-            Expand-Archive -Path \"C:\Applications\wake-agent-windows-x64.zip\" -DestinationPath \"C:\Applications\wake-agent\" -Force;
-            Remove-Item \"C:\Applications\wake-agent-windows-x64.zip\";
-            Start-ScheduledTask -TaskName \"Wake Agent\";
+            Write-Host "Testing";
+            Write-Host "Testing Twice";
         }"'
 fi
